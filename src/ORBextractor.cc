@@ -429,6 +429,7 @@ namespace ORB_SLAM3
         }
 
         mvImagePyramid.resize(nlevels);
+        mvCostmapPyramid.resize(nlevels);
 
         mnFeaturesPerLevel.resize(nlevels);
         float factor = 1.0f / scaleFactor;
@@ -916,42 +917,93 @@ namespace ORB_SLAM3
 
             float hY = cellH + 6;
 
-            for(int i=0; i<levelRows; i++)
-            {
+            vector<vector<float>> nfeatures_cell(levelRows, vector<float>(levelCols, nfeaturesCell));
+            vector<vector<float>> cell_weights(levelRows, vector<float>(levelCols));
+            float cell_weights_sum = 0.0;
+            // Iterate over the costmap/quality scores if it exists - which means we are doing introspection
+            if (bqualityScoresAvailable){
+                for(int i=0; i<levelRows; i++){
+                    const float iniY = minBorderY + i*cellH - 3;
+                    iniYRow[i] = iniY;
+
+                    if(i == levelRows-1){
+                        hY = maxBorderY+3-iniY;
+                        if(hY<=0){
+                            continue;
+                        }
+                    }
+
+                    float hX = cellW + 6;
+                
+                
+                    for (int j=0; j<levelCols; j++) {
+                    float iniX;
+
+                        if (i==0) {
+                            iniX = minBorderX + j*cellW - 3;
+                            iniXCol[j] = iniX;
+                        } else {
+                            iniX = iniXCol[j];
+                        }
+
+
+                        if(j == levelCols-1) {
+                            hX = maxBorderX+3-iniX;
+                            if(hX<=0){
+                            continue;
+                            }
+                        }
+
+                        // So first it is converting the cost values associated with each pixel to quality score using the mapping  (1-x)/(1+x) . Then it calculates the sum of the quality scores for all pixels in each image cell. This is later used to weight the maximum number of features to be extracted from each cell
+                        long unsigned int sum = cv::sum(mvCostmapPyramid[level].rowRange(iniY,iniY+hY).colRange(iniX,iniX+hX))[0];
+                        float cost = static_cast<float>(sum)/static_cast<float>((hX) * (hY));
+                        float qual_score = 1.0 / (1.0 + cost/255);
+                        float qual_score_norm = 2 * qual_score - 1;
+                        cell_weights[i][j] = qual_score_norm;
+                        cell_weights_sum+= qual_score_norm;
+                    }
+                }
+            }
+
+             for(int i=0; i<levelRows; i++){
                 const float iniY = minBorderY + i*cellH - 3;
                 iniYRow[i] = iniY;
 
-                if(i == levelRows-1)
-                {
+                if(i == levelRows-1){
                     hY = maxBorderY+3-iniY;
-                    if(hY<=0)
+                    if(hY<=0){
                         continue;
+                    }
                 }
 
                 float hX = cellW + 6;
 
-                for(int j=0; j<levelCols; j++)
-                {
+                for (int j=0; j<levelCols; j++) {
                     float iniX;
 
-                    if(i==0)
-                    {
+                    if (i==0) {
                         iniX = minBorderX + j*cellW - 3;
                         iniXCol[j] = iniX;
-                    }
-                    else
-                    {
+                    } else {
                         iniX = iniXCol[j];
                     }
 
 
-                    if(j == levelCols-1)
-                    {
+                    if(j == levelCols-1) {
                         hX = maxBorderX+3-iniX;
-                        if(hX<=0)
+                        if(hX<=0){
                             continue;
+                        }
                     }
 
+                    // If the predicted quality score image is available,
+                    // set the maximum number of features to be extracted
+                    // from the cell given the mean quality of the cell 
+                    if (bqualityScoresAvailable) {
+                        nfeatures_cell[i][j] = std::max(1.0f, 
+                                    ceil((float)nDesiredFeatures * 
+                                    cell_weights[i][j] / cell_weights_sum));
+                    }
 
                     Mat cellImage = mvImagePyramid[level].rowRange(iniY,iniY+hY).colRange(iniX,iniX+hX);
 
@@ -959,32 +1011,41 @@ namespace ORB_SLAM3
 
                     FAST(cellImage,cellKeyPoints[i][j],iniThFAST,true);
 
-                    if(cellKeyPoints[i][j].size()<=3)
-                    {
+                    if(cellKeyPoints[i][j].size()<=3){
                         cellKeyPoints[i][j].clear();
-
                         FAST(cellImage,cellKeyPoints[i][j],minThFAST,true);
+                    }
+
+                    // Scales the keypoint response values by the predicted quality
+                    // score. This is to affect which features will be selected as
+                    // best ones when they are sorted based on response value by
+                    // KeyPointsFilter::retainBest()
+                    if (bqualityScoresAvailable) {
+                        for (size_t k = 0; k < cellKeyPoints[i][j].size(); k++) {
+                            float cost = static_cast<float>(
+                            mvCostmapPyramid[level].rowRange(iniY,iniY+hY).colRange(iniX,iniX+hX).at<uint8_t>(
+                                    cellKeyPoints[i][j][k].pt.y,
+                                    cellKeyPoints[i][j][k].pt.x));
+                            cellKeyPoints[i][j][k].response *= 2 * ( 1.0f/(1.0f + cost/255.0f)) - 1;
+                        }
                     }
 
 
                     const int nKeys = cellKeyPoints[i][j].size();
                     nTotal[i][j] = nKeys;
 
-                    if(nKeys>nfeaturesCell)
-                    {
+                    if(nKeys>nfeaturesCell){
                         nToRetain[i][j] = nfeaturesCell;
                         bNoMore[i][j] = false;
-                    }
-                    else
-                    {
+                    } else {
                         nToRetain[i][j] = nKeys;
                         nToDistribute += nfeaturesCell-nKeys;
                         bNoMore[i][j] = true;
                         nNoMore++;
                     }
-
                 }
             }
+            
 
 
             // Retain by score
@@ -1065,22 +1126,36 @@ namespace ORB_SLAM3
             computeOrbDescriptor(keypoints[i], image, &pattern[0], descriptors.ptr((int)i));
     }
 
+    // With introspection
     int ORBextractor::operator()( InputArray _image, InputArray _mask, vector<KeyPoint>& _keypoints,
-                                  OutputArray _descriptors, std::vector<int> &vLappingArea)
+                                  OutputArray _descriptors, std::vector<int> &vLappingArea,
+                                  const bool introspection_on)
     {
         //cout << "[ORBextractor]: Max Features: " << nfeatures << endl;
-        if(_image.empty())
+        if(_image.empty()){
             return -1;
+        }
+        
+        Mat quality_score_img;
+        if (!_mask.empty() && introspection_on) {
+            assert(_mask.type() == CV_8UC1 );
+            quality_score_img = _mask.getMat();
+            ComputePyramid(quality_score_img, &mvCostmapPyramid);
+            bqualityScoresAvailable = true;
+        } else {
+            bqualityScoresAvailable = false;
+        }
+        
 
         Mat image = _image.getMat();
         assert(image.type() == CV_8UC1 );
 
         // Pre-compute the scale pyramid
-        ComputePyramid(image);
+        ComputePyramid(image, &mvImagePyramid);
 
         vector < vector<KeyPoint> > allKeypoints;
-        ComputeKeyPointsOctTree(allKeypoints);
-        //ComputeKeyPointsOld(allKeypoints);
+        // ComputeKeyPointsOctTree(allKeypoints);   // TODO can we use octtree like the OG ORB-SLAM3 implementation?
+        ComputeKeyPointsOld(allKeypoints);
 
         Mat descriptors;
 
@@ -1149,22 +1224,28 @@ namespace ORB_SLAM3
         return monoIndex;
     }
 
-    void ORBextractor::ComputePyramid(cv::Mat image)
+    void ORBextractor::ComputePyramid(cv::Mat image,  std::vector<cv::Mat>* pyramid_ptr) const
     {
+        if(!pyramid_ptr){
+            cerr << "ComputePyramid passed a nullptr :(" << endl;
+        }
+
+        std::vector<cv::Mat>& pyramid = *pyramid_ptr;
+        
         for (int level = 0; level < nlevels; ++level)
         {
             float scale = mvInvScaleFactor[level];
             Size sz(cvRound((float)image.cols*scale), cvRound((float)image.rows*scale));
             Size wholeSize(sz.width + EDGE_THRESHOLD*2, sz.height + EDGE_THRESHOLD*2);
             Mat temp(wholeSize, image.type()), masktemp;
-            mvImagePyramid[level] = temp(Rect(EDGE_THRESHOLD, EDGE_THRESHOLD, sz.width, sz.height));
+            pyramid[level] = temp(Rect(EDGE_THRESHOLD, EDGE_THRESHOLD, sz.width, sz.height));
 
             // Compute the resized image
             if( level != 0 )
             {
-                resize(mvImagePyramid[level-1], mvImagePyramid[level], sz, 0, 0, INTER_LINEAR);
+                resize(pyramid[level-1], pyramid[level], sz, 0, 0, INTER_LINEAR);
 
-                copyMakeBorder(mvImagePyramid[level], temp, EDGE_THRESHOLD, EDGE_THRESHOLD, EDGE_THRESHOLD, EDGE_THRESHOLD,
+                copyMakeBorder(pyramid[level], temp, EDGE_THRESHOLD, EDGE_THRESHOLD, EDGE_THRESHOLD, EDGE_THRESHOLD,
                                BORDER_REFLECT_101+BORDER_ISOLATED);
             }
             else
