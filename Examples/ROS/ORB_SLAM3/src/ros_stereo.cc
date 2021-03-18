@@ -20,8 +20,11 @@
  */
 
 #include <cv_bridge/cv_bridge.h>
+#include <image_transport/image_transport.h>
+#include <image_transport/subscriber_filter.h>
 #include <message_filters/subscriber.h>
 #include <message_filters/sync_policies/approximate_time.h>
+#include <message_filters/sync_policies/exact_time.h>
 #include <message_filters/time_synchronizer.h>
 #include <ros/ros.h>
 
@@ -34,6 +37,16 @@
 #include "../../../include/System.h"
 
 using namespace std;
+
+// Provide approximate and exact stereo image synchronization policies
+typedef message_filters::sync_policies::ExactTime<sensor_msgs::Image,
+                                                  sensor_msgs::Image>
+    ExactPolicy;
+typedef message_filters::sync_policies::ApproximateTime<sensor_msgs::Image,
+                                                        sensor_msgs::Image>
+    ApproximatePolicy;
+typedef message_filters::Synchronizer<ExactPolicy> ExactSync;
+typedef message_filters::Synchronizer<ApproximatePolicy> ApproximateSync;
 
 class ImageGrabber {
  public:
@@ -48,7 +61,7 @@ class ImageGrabber {
 };
 
 int main(int argc, char** argv) {
-  ros::init(argc, argv, "RGBD");
+  ros::init(argc, argv, "Stereo");
   ros::start();
 
   // Load launch file parameters from parameter server
@@ -86,6 +99,20 @@ int main(int argc, char** argv) {
   bool introspection_on;
   if (!private_nh.getParam("introspection_on", introspection_on)) {
     ROS_ERROR("Could not load parameter: 'introspection_on'");
+    ros::shutdown();
+    return -1;
+  }
+  // If approximate sync if on then an approximate time filter is used which is
+  // useful when the image pairs dont have the exact same time stamp
+  bool approximate_sync_on;
+  if (!private_nh.getParam("approximate_sync_on", approximate_sync_on)) {
+    ROS_ERROR("Could not load parameter: 'approximate_sync_on'");
+    ros::shutdown();
+    return -1;
+  }
+  string image_transport_type;
+  if (!private_nh.getParam("image_transport_type", image_transport_type)) {
+    ROS_ERROR("Could not load parameter: 'image_transport_type'");
     ros::shutdown();
     return -1;
   }
@@ -152,18 +179,26 @@ int main(int argc, char** argv) {
                                 igb.M2r);
   }
 
+  // Subscribe to image topics using image tranport. A transport hint and
+  // specification of approximate/exact time sync policy are required
   ros::NodeHandle nh;
+  image_transport::ImageTransport it(nh);
+  image_transport::TransportHints hints(image_transport_type);
+  image_transport::SubscriberFilter left_sub(
+      it, "/stereo/left/image_raw", 1, hints);
+  image_transport::SubscriberFilter right_sub(
+      it, "/stereo/right/image_raw", 1, hints);
 
-  message_filters::Subscriber<sensor_msgs::Image> left_sub(
-      nh, "/stereo/left/image_raw", 1);
-  message_filters::Subscriber<sensor_msgs::Image> right_sub(
-      nh, "/stereo/right/image_raw", 1);
-  typedef message_filters::sync_policies::ApproximateTime<sensor_msgs::Image,
-                                                          sensor_msgs::Image>
-      sync_pol;
-  message_filters::Synchronizer<sync_pol> sync(
-      sync_pol(10), left_sub, right_sub);
-  sync.registerCallback(boost::bind(&ImageGrabber::GrabStereo, &igb, _1, _2));
+  ExactSync exact_sync(ExactPolicy(10), left_sub, right_sub);
+  ApproximateSync approximate_sync(ApproximatePolicy(10), left_sub, right_sub);
+
+  if (approximate_sync_on) {
+    approximate_sync.registerCallback(
+        boost::bind(&ImageGrabber::GrabStereo, &igb, _1, _2));
+  } else {
+    exact_sync.registerCallback(
+        boost::bind(&ImageGrabber::GrabStereo, &igb, _1, _2));
+  }
 
   ros::spin();
 
