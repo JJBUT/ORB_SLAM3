@@ -1,207 +1,224 @@
 /**
-* This file is part of ORB-SLAM3
-*
-* Copyright (C) 2017-2020 Carlos Campos, Richard Elvira, Juan J. Gómez Rodríguez, José M.M. Montiel and Juan D. Tardós, University of Zaragoza.
-* Copyright (C) 2014-2016 Raúl Mur-Artal, José M.M. Montiel and Juan D. Tardós, University of Zaragoza.
-*
-* ORB-SLAM3 is free software: you can redistribute it and/or modify it under the terms of the GNU General Public
-* License as published by the Free Software Foundation, either version 3 of the License, or
-* (at your option) any later version.
-*
-* ORB-SLAM3 is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even
-* the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-* GNU General Public License for more details.
-*
-* You should have received a copy of the GNU General Public License along with ORB-SLAM3.
-* If not, see <http://www.gnu.org/licenses/>.
-*/
-
+ * This file is part of ORB-SLAM3
+ *
+ * Copyright (C) 2017-2020 Carlos Campos, Richard Elvira, Juan J. Gómez
+ * Rodríguez, José M.M. Montiel and Juan D. Tardós, University of Zaragoza.
+ * Copyright (C) 2014-2016 Raúl Mur-Artal, José M.M. Montiel and Juan D. Tardós,
+ * University of Zaragoza.
+ *
+ * ORB-SLAM3 is free software: you can redistribute it and/or modify it under
+ * the terms of the GNU General Public License as published by the Free Software
+ * Foundation, either version 3 of the License, or (at your option) any later
+ * version.
+ *
+ * ORB-SLAM3 is distributed in the hope that it will be useful, but WITHOUT ANY
+ * WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR
+ * A PARTICULAR PURPOSE. See the GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License along with
+ * ORB-SLAM3. If not, see <http://www.gnu.org/licenses/>.
+ */
 
 #ifndef LOOPCLOSING_H
 #define LOOPCLOSING_H
 
-#include "KeyFrame.h"
-#include "LocalMapping.h"
+#include <boost/algorithm/string.hpp>
+#include <mutex>
+#include <thread>
+
 #include "Atlas.h"
+#include "KeyFrame.h"
+#include "KeyFrameDatabase.h"
+#include "LocalMapping.h"
 #include "ORBVocabulary.h"
+#include "Thirdparty/g2o/g2o/types/types_seven_dof_expmap.h"
 #include "Tracking.h"
 
-#include "KeyFrameDatabase.h"
-
-#include <boost/algorithm/string.hpp>
-#include <thread>
-#include <mutex>
-#include "Thirdparty/g2o/g2o/types/types_seven_dof_expmap.h"
-
-namespace ORB_SLAM3
-{
+namespace ORB_SLAM3 {
 
 class Tracking;
 class LocalMapping;
 class KeyFrameDatabase;
 class Map;
 
+class LoopClosing {
+ public:
+  typedef pair<set<KeyFrame*>, int> ConsistentGroup;
+  typedef map<KeyFrame*,
+              g2o::Sim3,
+              std::less<KeyFrame*>,
+              Eigen::aligned_allocator<std::pair<KeyFrame* const, g2o::Sim3> > >
+      KeyFrameAndPose;
 
-class LoopClosing
-{
-public:
+ public:
+  LoopClosing(Atlas* pAtlas,
+              KeyFrameDatabase* pDB,
+              ORBVocabulary* pVoc,
+              const bool bFixScale);
 
-    typedef pair<set<KeyFrame*>,int> ConsistentGroup;    
-    typedef map<KeyFrame*,g2o::Sim3,std::less<KeyFrame*>,
-        Eigen::aligned_allocator<std::pair<KeyFrame* const, g2o::Sim3> > > KeyFrameAndPose;
-public:
+  void SetTracker(Tracking* pTracker);
 
-    LoopClosing(Atlas* pAtlas, KeyFrameDatabase* pDB, ORBVocabulary* pVoc,const bool bFixScale);
+  void SetLocalMapper(LocalMapping* pLocalMapper);
 
-    void SetTracker(Tracking* pTracker);
+  // Main function
+  void Run();
 
-    void SetLocalMapper(LocalMapping* pLocalMapper);
+  void InsertKeyFrame(KeyFrame* pKF);
 
-    // Main function
-    void Run();
+  void RequestReset();
+  void RequestResetActiveMap(Map* pMap);
 
-    void InsertKeyFrame(KeyFrame *pKF);
+  // This function will run in a separate thread
+  void RunGlobalBundleAdjustment(Map* pActiveMap, unsigned long nLoopKF);
 
-    void RequestReset();
-    void RequestResetActiveMap(Map* pMap);
+  bool isRunningGBA() {
+    unique_lock<std::mutex> lock(mMutexGBA);
+    return mbRunningGBA;
+  }
+  bool isFinishedGBA() {
+    unique_lock<std::mutex> lock(mMutexGBA);
+    return mbFinishedGBA;
+  }
 
-    // This function will run in a separate thread
-    void RunGlobalBundleAdjustment(Map* pActiveMap, unsigned long nLoopKF);
+  void RequestFinish();
 
-    bool isRunningGBA(){
-        unique_lock<std::mutex> lock(mMutexGBA);
-        return mbRunningGBA;
-    }
-    bool isFinishedGBA(){
-        unique_lock<std::mutex> lock(mMutexGBA);
-        return mbFinishedGBA;
-    }   
+  bool isFinished();
 
-    void RequestFinish();
+  Viewer* mpViewer;
 
-    bool isFinished();
+  EIGEN_MAKE_ALIGNED_OPERATOR_NEW
 
-    Viewer* mpViewer;
+ protected:
+  bool CheckNewKeyFrames();
 
-    EIGEN_MAKE_ALIGNED_OPERATOR_NEW
+  // Methods to implement the new place recognition algorithm
+  bool NewDetectCommonRegions();
+  bool DetectAndReffineSim3FromLastKF(KeyFrame* pCurrentKF,
+                                      KeyFrame* pMatchedKF,
+                                      g2o::Sim3& gScw,
+                                      int& nNumProjMatches,
+                                      std::vector<MapPoint*>& vpMPs,
+                                      std::vector<MapPoint*>& vpMatchedMPs);
+  bool DetectCommonRegionsFromBoW(std::vector<KeyFrame*>& vpBowCand,
+                                  KeyFrame*& pMatchedKF,
+                                  KeyFrame*& pLastCurrentKF,
+                                  g2o::Sim3& g2oScw,
+                                  int& nNumCoincidences,
+                                  std::vector<MapPoint*>& vpMPs,
+                                  std::vector<MapPoint*>& vpMatchedMPs);
+  bool DetectCommonRegionsFromLastKF(KeyFrame* pCurrentKF,
+                                     KeyFrame* pMatchedKF,
+                                     g2o::Sim3& gScw,
+                                     int& nNumProjMatches,
+                                     std::vector<MapPoint*>& vpMPs,
+                                     std::vector<MapPoint*>& vpMatchedMPs);
+  int FindMatchesByProjection(KeyFrame* pCurrentKF,
+                              KeyFrame* pMatchedKFw,
+                              g2o::Sim3& g2oScw,
+                              set<MapPoint*>& spMatchedMPinOrigin,
+                              vector<MapPoint*>& vpMapPoints,
+                              vector<MapPoint*>& vpMatchedMapPoints);
 
-protected:
+  void SearchAndFuse(const KeyFrameAndPose& CorrectedPosesMap,
+                     vector<MapPoint*>& vpMapPoints);
+  void SearchAndFuse(const vector<KeyFrame*>& vConectedKFs,
+                     vector<MapPoint*>& vpMapPoints);
 
-    bool CheckNewKeyFrames();
+  void CorrectLoop();
 
+  void MergeLocal();
+  void MergeLocal2();
 
-    //Methods to implement the new place recognition algorithm
-    bool NewDetectCommonRegions();
-    bool DetectAndReffineSim3FromLastKF(KeyFrame* pCurrentKF, KeyFrame* pMatchedKF, g2o::Sim3 &gScw, int &nNumProjMatches,
-                                        std::vector<MapPoint*> &vpMPs, std::vector<MapPoint*> &vpMatchedMPs);
-    bool DetectCommonRegionsFromBoW(std::vector<KeyFrame*> &vpBowCand, KeyFrame* &pMatchedKF, KeyFrame* &pLastCurrentKF, g2o::Sim3 &g2oScw,
-                                     int &nNumCoincidences, std::vector<MapPoint*> &vpMPs, std::vector<MapPoint*> &vpMatchedMPs);
-    bool DetectCommonRegionsFromLastKF(KeyFrame* pCurrentKF, KeyFrame* pMatchedKF, g2o::Sim3 &gScw, int &nNumProjMatches,
-                                            std::vector<MapPoint*> &vpMPs, std::vector<MapPoint*> &vpMatchedMPs);
-    int FindMatchesByProjection(KeyFrame* pCurrentKF, KeyFrame* pMatchedKFw, g2o::Sim3 &g2oScw,
-                                set<MapPoint*> &spMatchedMPinOrigin, vector<MapPoint*> &vpMapPoints,
-                                vector<MapPoint*> &vpMatchedMapPoints);
+  void CheckObservations(set<KeyFrame*>& spKFsMap1, set<KeyFrame*>& spKFsMap2);
+  void printReprojectionError(set<KeyFrame*>& spLocalWindowKFs,
+                              KeyFrame* mpCurrentKF,
+                              string& name);
 
+  void ResetIfRequested();
+  bool mbResetRequested;
+  bool mbResetActiveMapRequested;
+  Map* mpMapToReset;
+  std::mutex mMutexReset;
 
-    void SearchAndFuse(const KeyFrameAndPose &CorrectedPosesMap, vector<MapPoint*> &vpMapPoints);
-    void SearchAndFuse(const vector<KeyFrame*> &vConectedKFs, vector<MapPoint*> &vpMapPoints);
+  bool CheckFinish();
+  void SetFinish();
+  bool mbFinishRequested;
+  bool mbFinished;
+  std::mutex mMutexFinish;
 
-    void CorrectLoop();
+  Atlas* mpAtlas;
+  Tracking* mpTracker;
 
-    void MergeLocal();
-    void MergeLocal2();
+  KeyFrameDatabase* mpKeyFrameDB;
+  ORBVocabulary* mpORBVocabulary;
 
-    void CheckObservations(set<KeyFrame*> &spKFsMap1, set<KeyFrame*> &spKFsMap2);
-    void printReprojectionError(set<KeyFrame*> &spLocalWindowKFs, KeyFrame* mpCurrentKF, string &name);
+  LocalMapping* mpLocalMapper;
 
-    void ResetIfRequested();
-    bool mbResetRequested;
-    bool mbResetActiveMapRequested;
-    Map* mpMapToReset;
-    std::mutex mMutexReset;
+  std::list<KeyFrame*> mlpLoopKeyFrameQueue;
 
-    bool CheckFinish();
-    void SetFinish();
-    bool mbFinishRequested;
-    bool mbFinished;
-    std::mutex mMutexFinish;
+  std::mutex mMutexLoopQueue;
 
-    Atlas* mpAtlas;
-    Tracking* mpTracker;
+  // Loop detector parameters
+  float mnCovisibilityConsistencyTh;
 
-    KeyFrameDatabase* mpKeyFrameDB;
-    ORBVocabulary* mpORBVocabulary;
+  // Loop detector variables
+  KeyFrame* mpCurrentKF;
+  KeyFrame* mpLastCurrentKF;
+  KeyFrame* mpMatchedKF;
+  std::vector<ConsistentGroup> mvConsistentGroups;
+  std::vector<KeyFrame*> mvpEnoughConsistentCandidates;
+  std::vector<KeyFrame*> mvpCurrentConnectedKFs;
+  std::vector<MapPoint*> mvpCurrentMatchedPoints;
+  std::vector<MapPoint*> mvpLoopMapPoints;
+  cv::Mat mScw;
+  g2o::Sim3 mg2oScw;
 
-    LocalMapping *mpLocalMapper;
+  //-------
+  Map* mpLastMap;
 
-    std::list<KeyFrame*> mlpLoopKeyFrameQueue;
+  bool mbLoopDetected;
+  int mnLoopNumCoincidences;
+  int mnLoopNumNotFound;
+  KeyFrame* mpLoopLastCurrentKF;
+  g2o::Sim3 mg2oLoopSlw;
+  g2o::Sim3 mg2oLoopScw;
+  KeyFrame* mpLoopMatchedKF;
+  std::vector<MapPoint*> mvpLoopMPs;
+  std::vector<MapPoint*> mvpLoopMatchedMPs;
+  bool mbMergeDetected;
+  int mnMergeNumCoincidences;
+  int mnMergeNumNotFound;
+  KeyFrame* mpMergeLastCurrentKF;
+  g2o::Sim3 mg2oMergeSlw;
+  g2o::Sim3 mg2oMergeSmw;
+  g2o::Sim3 mg2oMergeScw;
+  KeyFrame* mpMergeMatchedKF;
+  std::vector<MapPoint*> mvpMergeMPs;
+  std::vector<MapPoint*> mvpMergeMatchedMPs;
+  std::vector<KeyFrame*> mvpMergeConnectedKFs;
 
-    std::mutex mMutexLoopQueue;
+  g2o::Sim3 mSold_new;
+  //-------
 
-    // Loop detector parameters
-    float mnCovisibilityConsistencyTh;
+  long unsigned int mLastLoopKFid;
 
-    // Loop detector variables
-    KeyFrame* mpCurrentKF;
-    KeyFrame* mpLastCurrentKF;
-    KeyFrame* mpMatchedKF;
-    std::vector<ConsistentGroup> mvConsistentGroups;
-    std::vector<KeyFrame*> mvpEnoughConsistentCandidates;
-    std::vector<KeyFrame*> mvpCurrentConnectedKFs;
-    std::vector<MapPoint*> mvpCurrentMatchedPoints;
-    std::vector<MapPoint*> mvpLoopMapPoints;
-    cv::Mat mScw;
-    g2o::Sim3 mg2oScw;
+  // Variables related to Global Bundle Adjustment
+  bool mbRunningGBA;
+  bool mbFinishedGBA;
+  bool mbStopGBA;
+  std::mutex mMutexGBA;
+  std::thread* mpThreadGBA;
 
-    //-------
-    Map* mpLastMap;
+  // Fix scale in the stereo/RGB-D case
+  bool mbFixScale;
 
-    bool mbLoopDetected;
-    int mnLoopNumCoincidences;
-    int mnLoopNumNotFound;
-    KeyFrame* mpLoopLastCurrentKF;
-    g2o::Sim3 mg2oLoopSlw;
-    g2o::Sim3 mg2oLoopScw;
-    KeyFrame* mpLoopMatchedKF;
-    std::vector<MapPoint*> mvpLoopMPs;
-    std::vector<MapPoint*> mvpLoopMatchedMPs;
-    bool mbMergeDetected;
-    int mnMergeNumCoincidences;
-    int mnMergeNumNotFound;
-    KeyFrame* mpMergeLastCurrentKF;
-    g2o::Sim3 mg2oMergeSlw;
-    g2o::Sim3 mg2oMergeSmw;
-    g2o::Sim3 mg2oMergeScw;
-    KeyFrame* mpMergeMatchedKF;
-    std::vector<MapPoint*> mvpMergeMPs;
-    std::vector<MapPoint*> mvpMergeMatchedMPs;
-    std::vector<KeyFrame*> mvpMergeConnectedKFs;
+  bool mnFullBAIdx;
 
-    g2o::Sim3 mSold_new;
-    //-------
-
-    long unsigned int mLastLoopKFid;
-
-    // Variables related to Global Bundle Adjustment
-    bool mbRunningGBA;
-    bool mbFinishedGBA;
-    bool mbStopGBA;
-    std::mutex mMutexGBA;
-    std::thread* mpThreadGBA;
-
-    // Fix scale in the stereo/RGB-D case
-    bool mbFixScale;
-
-
-    bool mnFullBAIdx;
-
-
-
-    vector<double> vdPR_CurrentTime;
-    vector<double> vdPR_MatchedTime;
-    vector<int> vnPR_TypeRecogn;
+  vector<double> vdPR_CurrentTime;
+  vector<double> vdPR_MatchedTime;
+  vector<int> vnPR_TypeRecogn;
 };
 
-} //namespace ORB_SLAM
+}  // namespace ORB_SLAM3
 
-#endif // LOOPCLOSING_H
+#endif  // LOOPCLOSING_H
