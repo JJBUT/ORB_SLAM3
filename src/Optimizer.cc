@@ -1167,6 +1167,7 @@ int Optimizer::PoseOptimization(Frame *pFrame)
     return nInitialCorrespondences-nBad;
 }
 
+// Not used
 void Optimizer::LocalBundleAdjustment(KeyFrame *pKF, bool* pbStopFlag, vector<KeyFrame*> &vpNonEnoughOptKFs)
 {
     // Local KeyFrames: First Breath Search from Current Keyframe
@@ -1691,9 +1692,10 @@ void Optimizer::LocalBundleAdjustment(KeyFrame *pKF, bool* pbStopFlag, vector<Ke
     pCurrentMap->IncreaseChangeIndex();
 }
 
-void Optimizer::LocalBundleAdjustment(KeyFrame *pKF, bool* pbStopFlag, Map* pMap, int& num_fixedKF)
+// With introspection
+void Optimizer::LocalBundleAdjustment(KeyFrame *pKF, bool* pbStopFlag, Map* pMap, int& num_fixedKF, const bool introspection_on)
 {    
-    //cout << "LBA" << endl;
+    // cout << "LBA" << endl;
     // Local KeyFrames: First Breath Search from Current Keyframe
     list<KeyFrame*> lLocalKeyFrames;
 
@@ -1910,6 +1912,12 @@ void Optimizer::LocalBundleAdjustment(KeyFrame *pKF, bool* pbStopFlag, Map* pMap
             {
                 const int leftIndex = get<0>(mit->second);
 
+                float quality_score = 1.0;
+                if (introspection_on){
+                    quality_score = pKFi->mvKeyQualScore[leftIndex];
+                }
+                
+
                 // Monocular observation
                 if(leftIndex != -1 && pKFi->mvuRight[get<0>(mit->second)]<0)
                 {
@@ -1927,7 +1935,7 @@ void Optimizer::LocalBundleAdjustment(KeyFrame *pKF, bool* pbStopFlag, Map* pMap
 
                     g2o::RobustKernelHuber* rk = new g2o::RobustKernelHuber;
                     e->setRobustKernel(rk);
-                    rk->setDelta(thHuberMono);
+                    rk->setDelta(thHuberMono*quality_score);
 
                     e->pCamera = pKFi->mpCamera;
 
@@ -1956,7 +1964,7 @@ void Optimizer::LocalBundleAdjustment(KeyFrame *pKF, bool* pbStopFlag, Map* pMap
 
                     g2o::RobustKernelHuber* rk = new g2o::RobustKernelHuber;
                     e->setRobustKernel(rk);
-                    rk->setDelta(thHuberStereo);
+                    rk->setDelta(thHuberStereo*quality_score);
 
                     e->fx = pKFi->fx;
                     e->fy = pKFi->fy;
@@ -1992,7 +2000,7 @@ void Optimizer::LocalBundleAdjustment(KeyFrame *pKF, bool* pbStopFlag, Map* pMap
 
                         g2o::RobustKernelHuber* rk = new g2o::RobustKernelHuber;
                         e->setRobustKernel(rk);
-                        rk->setDelta(thHuberMono);
+                        rk->setDelta(thHuberMono*quality_score);
 
                         e->mTrl = Converter::toSE3Quat(pKFi->mTrl);
 
@@ -2025,7 +2033,7 @@ void Optimizer::LocalBundleAdjustment(KeyFrame *pKF, bool* pbStopFlag, Map* pMap
     //std::cout << "LBA time = " << std::chrono::duration_cast<std::chrono::milliseconds>(end - begin).count() << "[ms]" << std::endl;
     //std::cout << "Keyframes: " << nKFs << " --- MapPoints: " << nPoints << " --- Edges: " << nEdges << endl;
 
-    bool bDoMore= true;
+    bool bDoMore = true;
 
     if(pbStopFlag)
         if(*pbStopFlag)
@@ -2033,7 +2041,6 @@ void Optimizer::LocalBundleAdjustment(KeyFrame *pKF, bool* pbStopFlag, Map* pMap
 
     if(bDoMore)
     {
-
         // Check inlier observations
         int nMonoBadObs = 0;
         for(size_t i=0, iend=vpEdgesMono.size(); i<iend;i++)
@@ -6100,6 +6107,7 @@ void Optimizer::MergeBundleAdjustmentVisual(KeyFrame* pCurrentKF, vector<KeyFram
     }
 }
 
+// Stereo use - Local BA in welding area when two maps are merged
 void Optimizer::LocalBundleAdjustment(KeyFrame* pMainKF,vector<KeyFrame*> vpAdjustKF, vector<KeyFrame*> vpFixedKF, bool *pbStopFlag)
 {
     bool bShowImages = false;

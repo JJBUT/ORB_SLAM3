@@ -47,8 +47,8 @@ public:
 
     void SetTracker(Tracking* pTracker);
 
-    // Main function
-    void Run();
+    // Main function - with introspection
+    void Run(const bool introspection_on);
 
     void InsertKeyFrame(KeyFrame* pKF);
     void EmptyQueue();
