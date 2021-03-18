@@ -1,0 +1,9 @@
+<launch>
+    <node pkg="rosbag" 
+          type="play" 
+          name="player" 
+          output="screen" 
+          args="-r 1.0 /home/administrator/DATA/BAGS/00015_2021-03-09-10-34-07.bag"/>
+
+     <include file="$(find ORB_SLAM3)/launch/stereo.launch"/>
+</launch>

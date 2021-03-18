@@ -51,29 +51,60 @@ int main(int argc, char** argv) {
   ros::init(argc, argv, "RGBD");
   ros::start();
 
-  if (argc != 4) {
-    cerr << endl
-         << "Usage: rosrun ORB_SLAM3 Stereo path_to_vocabulary "
-            "path_to_settings do_rectify"
-         << endl;
+  // Load launch file parameters from parameter server
+  ros::NodeHandle private_nh("~");
+
+  std::string path_to_vocabulary;
+  if (!private_nh.getParam("path_to_vocabulary", path_to_vocabulary)) {
+    ROS_ERROR("Could not load parameter: 'path_to_vocabulary'");
     ros::shutdown();
-    return 1;
+    return -1;
+  }
+  std::string path_to_settings;
+  if (!private_nh.getParam("path_to_settings", path_to_settings)) {
+    ROS_ERROR("Could not load parameter: 'path_to_settings'");
+    ros::shutdown();
+    return -1;
+  }
+  std::string path_to_introspection_model;
+  if (!private_nh.getParam("path_to_introspection_model",
+                           path_to_introspection_model)) {
+    ROS_ERROR("Could not load parameter: 'path_to_introspection_model'");
+    ros::shutdown();
+    return -1;
+  }
+  // Undistort or/and rectify - if you don't want on of these leave
+  // the distortion or/and rectification parameters as zero in the config file.
+  // But you do have to provide them
+  bool undistort_and_rectify_on;
+  if (!private_nh.getParam("undistort_and_rectify_on",
+                           undistort_and_rectify_on)) {
+    ROS_ERROR("Could not load parameter: 'undistort_and_rectify_on'");
+    ros::shutdown();
+    return -1;
+  }
+  bool introspection_on;
+  if (!private_nh.getParam("introspection_on", introspection_on)) {
+    ROS_ERROR("Could not load parameter: 'introspection_on'");
+    ros::shutdown();
+    return -1;
   }
 
   // Create SLAM system. It initializes all system threads and gets ready to
   // process frames.
-  ORB_SLAM3::System SLAM(argv[1], argv[2], ORB_SLAM3::System::STEREO, true);
+  ORB_SLAM3::System SLAM(
+      path_to_vocabulary, path_to_settings, ORB_SLAM3::System::STEREO, true);
 
   ImageGrabber igb(&SLAM);
 
-  stringstream ss(argv[3]);
-  ss >> boolalpha >> igb.do_rectify;
+  igb.do_rectify = undistort_and_rectify_on;
 
   if (igb.do_rectify) {
     // Load settings related to stereo calibration
-    cv::FileStorage fsSettings(argv[2], cv::FileStorage::READ);
+    cv::FileStorage fsSettings(path_to_settings, cv::FileStorage::READ);
     if (!fsSettings.isOpened()) {
-      cerr << "ERROR: Wrong path to settings" << endl;
+      ROS_ERROR("ERROR: Wrong path to settings");
+      ros::shutdown();
       return -1;
     }
 
@@ -98,8 +129,8 @@ int main(int argc, char** argv) {
     if (K_l.empty() || K_r.empty() || P_l.empty() || P_r.empty() ||
         R_l.empty() || R_r.empty() || D_l.empty() || D_r.empty() ||
         rows_l == 0 || rows_r == 0 || cols_l == 0 || cols_r == 0) {
-      cerr << "ERROR: Calibration parameters to rectify stereo are missing!"
-           << endl;
+      ROS_ERROR("ERROR: Calibration parameters to rectify stereo are missing!");
+      ros::shutdown();
       return -1;
     }
 
@@ -124,9 +155,9 @@ int main(int argc, char** argv) {
   ros::NodeHandle nh;
 
   message_filters::Subscriber<sensor_msgs::Image> left_sub(
-      nh, "/camera/left/image_raw", 1);
+      nh, "/stereo/left/image_raw", 1);
   message_filters::Subscriber<sensor_msgs::Image> right_sub(
-      nh, "/camera/right/image_raw", 1);
+      nh, "/stereo/right/image_raw", 1);
   typedef message_filters::sync_policies::ApproximateTime<sensor_msgs::Image,
                                                           sensor_msgs::Image>
       sync_pol;

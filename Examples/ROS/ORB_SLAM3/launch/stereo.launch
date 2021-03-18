@@ -1,0 +1,22 @@
+<launch>
+    <arg name="path_to_vocabulary" 
+         default="/home/administrator/SLAM/ORB_SLAM3/Vocabulary/ORBvoc.txt"/>
+    <arg name="path_to_settings" 
+         default="/home/administrator/SLAM/ORB_SLAM3/Examples/Stereo/ahg_turn_test.yaml"/>
+    <arg name="path_to_introspection_model" 
+         default="/home/administrator/DATA/MODEL/speedway_24th_cross/exported_model/iv_speedway_24th_cross_mobilenet_c1deepsup_light.pt"/>
+    <arg name="undistort_and_rectify_on" default="true"/>
+    <arg name="introspection_on" default="true"/>
+
+    <node pkg="ORB_SLAM3" 
+          type="Stereo" 
+          name="ORB_SLAM_Stereo" 
+          output="screen">
+        <param name="path_to_vocabulary" type="string" value="$(arg path_to_vocabulary)"/>
+        <param name="path_to_settings" type="string" value="$(arg path_to_settings)"/>
+        <param name="path_to_introspection_model" type="string" value="$(arg path_to_introspection_model)"/>
+        <param name="undistort_and_rectify_on" type="bool" value="$(arg undistort_and_rectify_on)"/>
+        <param name="introspection_on" type="bool" value="$(arg introspection_on)"/>
+    </node>
+
+</launch>
