@@ -84,7 +84,7 @@ int main(int argc, char **argv)
     const int nImages = vstrImageLeft.size();
 
     // Create SLAM system. It initializes all system threads and gets ready to process frames.
-    ORB_SLAM3::System SLAM(FLAGS_path_to_vocabulary, FLAGS_path_to_settings, ORB_SLAM3::System::STEREO, FLAGS_viewer_on);
+    ORB_SLAM3::System SLAM(FLAGS_path_to_vocabulary, FLAGS_path_to_settings, ORB_SLAM3::System::STEREO, FLAGS_viewer_on, FLAGS_introspection_on);
 
     // Vector for tracking time statistics
     vector<float> vTimesTrack;

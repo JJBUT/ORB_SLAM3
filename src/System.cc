@@ -39,7 +39,8 @@ namespace ORB_SLAM3
 Verbose::eLevel Verbose::th = Verbose::VERBOSITY_NORMAL;
 
 System::System(const string &strVocFile, const string &strSettingsFile, const eSensor sensor,
-               const bool bUseViewer, const int initFr, const string &strSequence, const string &strLoadingFile):
+               const bool bUseViewer, const int initFr, const string &strSequence, const string &strLoadingFile,
+               const bool introspection_on):
     mSensor(sensor), mpViewer(static_cast<Viewer*>(NULL)), mbReset(false), mbResetActiveMap(false),
     mbActivateLocalizationMode(false), mbDeactivateLocalizationMode(false)
 {
@@ -178,7 +179,7 @@ System::System(const string &strVocFile, const string &strSettingsFile, const eS
 
     //Initialize the Local Mapping thread and launch
     mpLocalMapper = new LocalMapping(this, mpAtlas, mSensor==MONOCULAR || mSensor==IMU_MONOCULAR, mSensor==IMU_MONOCULAR || mSensor==IMU_STEREO, strSequence);
-    mptLocalMapping = new thread(&ORB_SLAM3::LocalMapping::Run,mpLocalMapper);
+    mptLocalMapping = new thread(&ORB_SLAM3::LocalMapping::Run,mpLocalMapper, introspection_on);
     mpLocalMapper->mInitFr = initFr;
     mpLocalMapper->mThFarPoints = fsSettings["thFarPoints"];
     if(mpLocalMapper->mThFarPoints!=0)
@@ -192,7 +193,7 @@ System::System(const string &strVocFile, const string &strSettingsFile, const eS
     //Initialize the Loop Closing thread and launch
     // mSensor!=MONOCULAR && mSensor!=IMU_MONOCULAR
     mpLoopCloser = new LoopClosing(mpAtlas, mpKeyFrameDatabase, mpVocabulary, mSensor!=MONOCULAR); // mSensor!=MONOCULAR);
-    mptLoopClosing = new thread(&ORB_SLAM3::LoopClosing::Run, mpLoopCloser);
+    mptLoopClosing = new thread(&ORB_SLAM3::LoopClosing::Run, mpLoopCloser, introspection_on);
 
     //Initialize the Viewer thread and launch
     if(bUseViewer)
@@ -218,6 +219,13 @@ System::System(const string &strVocFile, const string &strSettingsFile, const eS
     Verbose::SetTh(Verbose::VERBOSITY_QUIET);
 
 }
+
+// With introspection
+System::System(const string &strVocFile, const string &strSettingsFile, const eSensor sensor, const bool bUseViewer, const bool introspection_on)
+    : System(strVocFile, strSettingsFile, sensor, bUseViewer, 0, std::string(), std::string(), introspection_on)
+    {}
+    
+    
 
 cv::Mat System::TrackStereo(const cv::Mat &imLeft, const cv::Mat &imRight, const double &timestamp, const vector<IMU::Point>& vImuMeas, string filename, const bool introspection_on, const cv::Mat &costmap)
 {
