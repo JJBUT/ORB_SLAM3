@@ -64,7 +64,8 @@ void LocalMapping::SetTracker(Tracking *pTracker)
     mpTracker=pTracker;
 }
 
-void LocalMapping::Run()
+// Main function - with introspection
+void LocalMapping::Run(const bool introspection_on)
 {
 
     mbFinished = false;
@@ -146,12 +147,13 @@ void LocalMapping::Run()
                         }
 
                         bool bLarge = ((mpTracker->GetMatchesInliers()>75)&&mbMonocular)||((mpTracker->GetMatchesInliers()>100)&&!mbMonocular);
+                        // TODO do I need to make this use introspection too?
                         Optimizer::LocalInertialBA(mpCurrentKeyFrame, &mbAbortBA, mpCurrentKeyFrame->GetMap(), bLarge, !mpCurrentKeyFrame->GetMap()->GetIniertialBA2());
                     }
                     else
                     {
                         std::chrono::steady_clock::time_point begin = std::chrono::steady_clock::now();
-                        Optimizer::LocalBundleAdjustment(mpCurrentKeyFrame,&mbAbortBA, mpCurrentKeyFrame->GetMap(),num_FixedKF_BA);
+                        Optimizer::LocalBundleAdjustment(mpCurrentKeyFrame,&mbAbortBA, mpCurrentKeyFrame->GetMap(),num_FixedKF_BA, introspection_on);
                         std::chrono::steady_clock::time_point end = std::chrono::steady_clock::now();
                     }
                 }
