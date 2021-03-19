@@ -27,6 +27,8 @@
 #include <message_filters/sync_policies/exact_time.h>
 #include <message_filters/time_synchronizer.h>
 #include <ros/ros.h>
+#include <torch/script.h>
+#include <torch/torch.h>
 
 #include <algorithm>
 #include <chrono>
@@ -35,6 +37,7 @@
 #include <opencv2/core/core.hpp>
 
 #include "../../../include/System.h"
+#include "iv_slam_helpers/torch_helpers.h"
 
 using namespace std;
 
@@ -57,7 +60,12 @@ class ImageGrabber {
 
   ORB_SLAM3::System* mpSLAM;
   bool do_rectify;
+  bool introspection_on;
   cv::Mat M1l, M2l, M1r, M2r;
+
+  // Introspection utils
+  torch::jit::script::Module introspection_model;
+  torch::Device device = torch::kCPU;
 };
 
 int main(int argc, char** argv) {
@@ -102,6 +110,12 @@ int main(int argc, char** argv) {
     ros::shutdown();
     return -1;
   }
+  bool gpu_available;
+  if (!private_nh.getParam("gpu_available", gpu_available)) {
+    ROS_ERROR("Could not load parameter: 'gpu_available'");
+    ros::shutdown();
+    return -1;
+  }
   // If approximate sync if on then an approximate time filter is used which is
   // useful when the image pairs dont have the exact same time stamp
   bool approximate_sync_on;
@@ -125,6 +139,29 @@ int main(int argc, char** argv) {
   ImageGrabber igb(&SLAM);
 
   igb.do_rectify = undistort_and_rectify_on;
+  igb.introspection_on = introspection_on;
+
+  // Load introspection model
+  // torch::jit::script::Module introspection_model;
+  // torch::Device device = torch::kCPU;
+  if (introspection_on) {
+    // Check if we have a GPU to run on
+    if (gpu_available && torch::cuda::is_available()) {
+      igb.device = torch::kCUDA;
+      ROS_INFO("Introspection model running on GPU :)");
+    } else {
+      ROS_WARN("Introspection model running on CPU :(");
+    }
+    try {
+      // Deserialize the ScriptModule from file
+      igb.introspection_model = torch::jit::load(path_to_introspection_model);
+      igb.introspection_model.to(igb.device);
+    } catch (const c10::Error& e) {
+      ROS_ERROR("Error deserializing the ScriptModule from file");
+      ros::shutdown();
+      return -1;
+    }
+  }
 
   if (igb.do_rectify) {
     // Load settings related to stereo calibration
@@ -234,14 +271,56 @@ void ImageGrabber::GrabStereo(const sensor_msgs::ImageConstPtr& msgLeft,
     return;
   }
 
-  if (do_rectify) {
-    cv::Mat imLeft, imRight;
+  // Rectify and undistort images if needed
+  cv::Mat imLeft, imRight;
+  if (this->do_rectify) {
     cv::remap(cv_ptrLeft->image, imLeft, M1l, M2l, cv::INTER_LINEAR);
     cv::remap(cv_ptrRight->image, imRight, M1r, M2r, cv::INTER_LINEAR);
-    mpSLAM->TrackStereo(imLeft, imRight, cv_ptrLeft->header.stamp.toSec());
   } else {
-    mpSLAM->TrackStereo(cv_ptrLeft->image,
-                        cv_ptrRight->image,
-                        cv_ptrLeft->header.stamp.toSec());
+    // Don't undistort/rectify
+    imLeft = cv_ptrLeft->image;
+    imRight = cv_ptrRight->image;
+  }
+
+  // Feed left image to model to create cost mask
+  cv::Mat cost_img_cv;
+  if (this->introspection_on) {
+    // Run inference on the introspection model online
+    cv::Mat imLeft_RGB =
+        imLeft;  // TODO initializae imLeft_RGB as blank instead of imLeft
+    cv::cvtColor(imLeft_RGB, imLeft_RGB, CV_BGR2RGB);
+
+    // Convert to float and normalize image
+    imLeft_RGB.convertTo(imLeft_RGB, CV_32FC3, 1.0 / 255.0);
+    cv::subtract(imLeft_RGB,
+                 cv::Scalar(0.485, 0.456, 0.406),
+                 imLeft_RGB);  // TODO what are these numbers
+    cv::divide(imLeft_RGB, cv::Scalar(0.229, 0.224, 0.225), imLeft_RGB);
+
+    auto tensor_img = ORB_SLAM3::CVImgToTensor(imLeft_RGB);
+    // Swap axis
+    tensor_img = ORB_SLAM3::TransposeTensor(tensor_img, {(2), (0), (1)});
+    // Add batch dim
+    tensor_img.unsqueeze_(0);
+
+    tensor_img = tensor_img.to(this->device);
+    std::vector<torch::jit::IValue> inputs{tensor_img};
+    at::Tensor cost_img;
+    cost_img = this->introspection_model.forward(inputs).toTensor();
+    cost_img = (cost_img * 255.0).to(torch::kByte);
+    cost_img = cost_img.to(torch::kCPU);
+
+    cost_img_cv = ORB_SLAM3::ToCvImage(cost_img);
+  }
+
+  // Pass the images to the SLAM system
+  if (this->introspection_on) {
+    mpSLAM->TrackStereo(imLeft,
+                        imRight,
+                        cv_ptrLeft->header.stamp.toSec(),
+                        this->introspection_on,
+                        cost_img_cv);
+  } else {
+    mpSLAM->TrackStereo(imLeft, imRight, cv_ptrLeft->header.stamp.toSec());
   }
 }
