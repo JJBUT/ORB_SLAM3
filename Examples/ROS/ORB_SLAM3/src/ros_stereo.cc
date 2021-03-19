@@ -38,8 +38,20 @@
 
 #include "../../../include/System.h"
 #include "iv_slam_helpers/torch_helpers.h"
+#include "std_srvs/Trigger.h"
 
 using namespace std;
+
+// Tracking states
+enum eTrackingState {
+  SYSTEM_NOT_READY = -1,
+  NO_IMAGES_YET = 0,
+  NOT_INITIALIZED = 1,
+  OK = 2,
+  RECENTLY_LOST = 3,
+  LOST = 4,
+  OK_KLT = 5
+};
 
 // Provide approximate and exact stereo image synchronization policies
 typedef message_filters::sync_policies::ExactTime<sensor_msgs::Image,
@@ -66,6 +78,23 @@ class ImageGrabber {
   // Introspection utils
   torch::jit::script::Module introspection_model;
   torch::Device device = torch::kCPU;
+};
+
+// A server that advertises a service which will call the system reset function
+class ResetServer {
+ public:
+  ResetServer(ros::NodeHandle& nh, ORB_SLAM3::System* pSLAM)
+      : nh_(nh), mpSLAM_(pSLAM) {
+    reset_vslam_server_ = nh_.advertiseService(
+        "/reset_orb_slam", &ResetServer::ResetServerCB, this);
+  }
+
+  bool ResetServerCB(std_srvs::Trigger::Request& req,
+                     std_srvs::Trigger::Response& res);
+
+  ros::NodeHandle nh_;
+  ORB_SLAM3::System* mpSLAM_;
+  ros::ServiceServer reset_vslam_server_;
 };
 
 int main(int argc, char** argv) {
@@ -135,6 +164,9 @@ int main(int argc, char** argv) {
   // process frames.
   ORB_SLAM3::System SLAM(
       path_to_vocabulary, path_to_settings, ORB_SLAM3::System::STEREO, true);
+
+  ros::NodeHandle nh;
+  ResetServer rs(nh, &SLAM);
 
   ImageGrabber igb(&SLAM);
 
@@ -218,7 +250,6 @@ int main(int argc, char** argv) {
 
   // Subscribe to image topics using image tranport. A transport hint and
   // specification of approximate/exact time sync policy are required
-  ros::NodeHandle nh;
   image_transport::ImageTransport it(nh);
   image_transport::TransportHints hints(image_transport_type);
   image_transport::SubscriberFilter left_sub(
@@ -233,6 +264,7 @@ int main(int argc, char** argv) {
     approximate_sync.registerCallback(
         boost::bind(&ImageGrabber::GrabStereo, &igb, _1, _2));
   } else {
+    // Time stamps will have to match exactly
     exact_sync.registerCallback(
         boost::bind(&ImageGrabber::GrabStereo, &igb, _1, _2));
   }
@@ -322,5 +354,22 @@ void ImageGrabber::GrabStereo(const sensor_msgs::ImageConstPtr& msgLeft,
                         cost_img_cv);
   } else {
     mpSLAM->TrackStereo(imLeft, imRight, cv_ptrLeft->header.stamp.toSec());
+  }
+}
+
+bool ResetServer::ResetServerCB(std_srvs::Trigger::Request& req,
+                                std_srvs::Trigger::Response& res) {
+  if (mpSLAM_->GetTrackingState() == OK) {
+    mpSLAM_->Reset();
+    res.success = true;
+    res.message = "Called reset_vslam_server_";
+    return true;
+  } else {
+    // Tracking is not ok - do not call reset becuase who knows what segfaults
+    // we will cause :(
+    res.success = false;
+    res.message =
+        "Not able to call reset_vslam_server_ because tracking is not OK";
+    return true;
   }
 }
