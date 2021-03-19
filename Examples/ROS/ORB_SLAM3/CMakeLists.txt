@@ -29,6 +29,7 @@ else()
 endif()
 
 LIST(APPEND CMAKE_MODULE_PATH ${PROJECT_SOURCE_DIR}/../../../cmake_modules)
+set(CMAKE_PREFIX_PATH ../../../Thirdparty/libtorch)
 
 find_package(OpenCV 4.0 QUIET)
 if(NOT OpenCV_FOUND)
@@ -40,6 +41,7 @@ endif()
 
 find_package(Eigen3 3.1.0 REQUIRED)
 find_package(Pangolin REQUIRED)
+find_package(Torch REQUIRED)
 find_package(image_transport REQUIRED)
 
 include_directories(
@@ -82,11 +84,13 @@ ${LIBS}
 
 # Node for stereo camera
 rosbuild_add_executable(Stereo
-src/ros_stereo.cc
+src/ros_stereo.cc ../../../src/iv_slam_helpers/torch_helpers.cpp
 )
+set_property(TARGET Stereo PROPERTY CXX_STANDARD 14)
 
 target_link_libraries(Stereo
 ${LIBS}
+"${TORCH_LIBRARIES}"
 )
 
 # Node for RGB-D camera
