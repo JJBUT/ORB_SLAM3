@@ -4,7 +4,7 @@ PATH_TO_SETTINGS="/home/administrator/SLAM/ORB_SLAM3/Examples/Stereo/ahg_turn_te
 PATH_TO_SEQUENCES="/home/administrator/DATA/KITTI_FORMAT/00015/sequences"
 PATH_TO_INTROSPECTION_MODEL="/home/administrator/DATA/MODEL/speedway_24th_cross/exported_model/iv_speedway_24th_cross_mobilenet_c1deepsup_light.pt"
 
-INTROSPECTION_ON="false"
+INTROSPECTION_ON="true"
 VIEWER_ON="true"
 GPU_AVAILABLE="true"
 # TODO undistort and rectify
