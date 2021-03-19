@@ -20,6 +20,8 @@
  */
 
 #include <cv_bridge/cv_bridge.h>
+#include <geometry_msgs/Pose.h>
+#include <geometry_msgs/PoseStamped.h>
 #include <image_transport/image_transport.h>
 #include <image_transport/subscriber_filter.h>
 #include <message_filters/subscriber.h>
@@ -27,6 +29,7 @@
 #include <message_filters/sync_policies/exact_time.h>
 #include <message_filters/time_synchronizer.h>
 #include <ros/ros.h>
+#include <tf2_geometry_msgs/tf2_geometry_msgs.h>
 #include <torch/script.h>
 #include <torch/torch.h>
 
@@ -53,6 +56,30 @@ enum eTrackingState {
   OK_KLT = 5
 };
 
+// Convert CV SE(3) mat to ROS Pose
+geometry_msgs::Pose cvMatToPose(cv::Mat& cv_pose) {
+  tf2::Matrix3x3 tf2_rot(cv_pose.at<float>(0, 0),
+                         cv_pose.at<float>(0, 1),
+                         cv_pose.at<float>(0, 2),
+                         cv_pose.at<float>(1, 0),
+                         cv_pose.at<float>(1, 1),
+                         cv_pose.at<float>(1, 2),
+                         cv_pose.at<float>(2, 0),
+                         cv_pose.at<float>(2, 1),
+                         cv_pose.at<float>(2, 2));
+
+  tf2::Vector3 tf2_trans(cv_pose.at<float>(0, 3),
+                         cv_pose.at<float>(1, 3),
+                         cv_pose.at<float>(2, 3));
+
+  // Create a transform and convert to a Pose
+  tf2::Transform tf2_transform(tf2_rot, tf2_trans);
+  geometry_msgs::Pose ros_pose;
+  tf2::toMsg(tf2_transform, ros_pose);
+
+  return ros_pose;
+}
+
 // Provide approximate and exact stereo image synchronization policies
 typedef message_filters::sync_policies::ExactTime<sensor_msgs::Image,
                                                   sensor_msgs::Image>
@@ -65,7 +92,10 @@ typedef message_filters::Synchronizer<ApproximatePolicy> ApproximateSync;
 
 class ImageGrabber {
  public:
-  ImageGrabber(ORB_SLAM3::System* pSLAM) : mpSLAM(pSLAM) {}
+  ImageGrabber(ros::NodeHandle& nh, ORB_SLAM3::System* pSLAM)
+      : nh_(nh), mpSLAM(pSLAM) {
+    pose_pub_ = nh_.advertise<geometry_msgs::PoseStamped>("pose", 1);
+  }
 
   void GrabStereo(const sensor_msgs::ImageConstPtr& msgLeft,
                   const sensor_msgs::ImageConstPtr& msgRight);
@@ -74,6 +104,10 @@ class ImageGrabber {
   bool do_rectify;
   bool introspection_on;
   cv::Mat M1l, M2l, M1r, M2r;
+
+  // ROS publishing utils
+  ros::NodeHandle nh_;
+  ros::Publisher pose_pub_;
 
   // Introspection utils
   torch::jit::script::Module introspection_model;
@@ -85,8 +119,8 @@ class ResetServer {
  public:
   ResetServer(ros::NodeHandle& nh, ORB_SLAM3::System* pSLAM)
       : nh_(nh), mpSLAM_(pSLAM) {
-    reset_vslam_server_ = nh_.advertiseService(
-        "/reset_orb_slam", &ResetServer::ResetServerCB, this);
+    reset_vslam_server_ =
+        nh_.advertiseService("reset", &ResetServer::ResetServerCB, this);
   }
 
   bool ResetServerCB(std_srvs::Trigger::Request& req,
@@ -165,10 +199,9 @@ int main(int argc, char** argv) {
   ORB_SLAM3::System SLAM(
       path_to_vocabulary, path_to_settings, ORB_SLAM3::System::STEREO, true);
 
-  ros::NodeHandle nh;
-  ResetServer rs(nh, &SLAM);
+  ResetServer rs(private_nh, &SLAM);
 
-  ImageGrabber igb(&SLAM);
+  ImageGrabber igb(private_nh, &SLAM);
 
   igb.do_rectify = undistort_and_rectify_on;
   igb.introspection_on = introspection_on;
@@ -250,6 +283,7 @@ int main(int argc, char** argv) {
 
   // Subscribe to image topics using image tranport. A transport hint and
   // specification of approximate/exact time sync policy are required
+  ros::NodeHandle nh;
   image_transport::ImageTransport it(nh);
   image_transport::TransportHints hints(image_transport_type);
   image_transport::SubscriberFilter left_sub(
@@ -346,15 +380,26 @@ void ImageGrabber::GrabStereo(const sensor_msgs::ImageConstPtr& msgLeft,
   }
 
   // Pass the images to the SLAM system
+  cv::Mat cv_pose;
   if (this->introspection_on) {
-    mpSLAM->TrackStereo(imLeft,
-                        imRight,
-                        cv_ptrLeft->header.stamp.toSec(),
-                        this->introspection_on,
-                        cost_img_cv);
+    cv_pose = mpSLAM->TrackStereo(imLeft,
+                                  imRight,
+                                  cv_ptrLeft->header.stamp.toSec(),
+                                  this->introspection_on,
+                                  cost_img_cv);
   } else {
-    mpSLAM->TrackStereo(imLeft, imRight, cv_ptrLeft->header.stamp.toSec());
+    cv_pose =
+        mpSLAM->TrackStereo(imLeft, imRight, cv_ptrLeft->header.stamp.toSec());
   }
+  // Publish the pose
+  geometry_msgs::PoseStamped ros_pose_stamped;
+  ros_pose_stamped.pose = cvMatToPose(cv_pose);
+  ros_pose_stamped.header.stamp =
+      cv_ptrLeft->header.stamp;  // This time may be old by now?
+  ros_pose_stamped.header.frame_id = "orb_slam";
+  pose_pub_.publish(ros_pose_stamped);
+
+  return;
 }
 
 bool ResetServer::ResetServerCB(std_srvs::Trigger::Request& req,
