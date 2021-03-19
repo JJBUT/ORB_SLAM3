@@ -9,6 +9,7 @@
      <!--ORB-SLAM centric-->
      <arg name="undistort_and_rectify_on" default="true"/>
      <arg name="introspection_on" default="true"/>
+     <arg name="gpu_available" default="true"/>
      <!-- ROS centric-->
      <arg name="approximate_sync_on" default="true" doc="Set to true if incoming image pair timestamps are not exactly the same"/>
      <arg name="image_transport_type" default="compressed" doc="'raw', 'compressed', 'theora' - image transport type of the subscribed image feeds"/>
@@ -24,6 +25,7 @@
 
           <param name="undistort_and_rectify_on" type="bool" value="$(arg undistort_and_rectify_on)"/>
           <param name="introspection_on" type="bool" value="$(arg introspection_on)"/>
+          <param name="gpu_available" type="bool" value="$(arg gpu_available)"/>
 
           <param name="approximate_sync_on" type="bool" value="$(arg approximate_sync_on)"/>
           <param name="image_transport_type" type="string" value="$(arg image_transport_type)"/>
