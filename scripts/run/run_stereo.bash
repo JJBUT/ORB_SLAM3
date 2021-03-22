@@ -7,5 +7,6 @@ PATH_TO_INTROSPECTION_MODEL="/home/administrator/DATA/MODEL/speedway_24th_cross/
 INTROSPECTION_ON="true"
 VIEWER_ON="true"
 GPU_AVAILABLE="true"
+# TODO undistort and rectify
 
 ../../Examples/Stereo/stereo_kitti --path_to_vocabulary=$PATH_TO_VOCABULARY --path_to_settings=$PATH_TO_SETTINGS --path_to_sequences=$PATH_TO_SEQUENCES --path_to_introspection_model=$PATH_TO_INTROSPECTION_MODEL --introspection_on=$INTROSPECTION_ON --viewer_on=$VIEWER_ON --gpu_available=$GPU_AVAILABLE

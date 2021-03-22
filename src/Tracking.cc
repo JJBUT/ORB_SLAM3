@@ -860,6 +860,7 @@ cv::Mat Tracking::GrabImageStereo(const cv::Mat &imRectLeft,
     }
   }
 
+  // TODO do we need to make all options introspective?
   if (mSensor == System::STEREO && !mpCamera2) {
     mCurrentFrame = Frame(mImGray,
                           imGrayRight,
@@ -1746,10 +1747,12 @@ void Tracking::Track() {
       }
     }
 
-    // Update drawer
+    // Update drawer and systems current pose
     mpFrameDrawer->Update(this);
-    if (!mCurrentFrame.mTcw.empty())
+    if (!mCurrentFrame.mTcw.empty()) {
       mpMapDrawer->SetCurrentCameraPose(mCurrentFrame.mTcw);
+      mCurrentFramePose = CalculateInverseTransform(mCurrentFrame.mTcw);
+    }
 
     if (bOK || mState == RECENTLY_LOST) {
       // Update motion model
@@ -3713,5 +3716,22 @@ void Tracking::NewDataset() { mnNumDataset++; }
 int Tracking::GetNumberDataset() { return mnNumDataset; }
 
 int Tracking::GetMatchesInliers() { return mnMatchesInliers; }
+
+cv::Mat Tracking::CalculateInverseTransform(const cv::Mat &transform) {
+  if (transform.empty()) {
+    std::cout << "MATRIX IS EMPTY!! " << std::endl;
+  }
+
+  cv::Mat R1 = transform.rowRange(0, 3).colRange(0, 3);
+  cv::Mat t1 = transform.rowRange(0, 3).col(3);
+  cv::Mat R1_inv = R1.t();
+  cv::Mat t1_inv = -R1_inv * t1;
+  cv::Mat transform_inv = cv::Mat::eye(4, 4, transform.type());
+
+  R1_inv.copyTo(transform_inv.rowRange(0, 3).colRange(0, 3));
+  t1_inv.copyTo(transform_inv.rowRange(0, 3).col(3));
+
+  return transform_inv;
+}
 
 }  // namespace ORB_SLAM3

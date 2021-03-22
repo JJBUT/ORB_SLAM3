@@ -1,0 +1,34 @@
+<launch>
+     <!--Configuration centric-->
+     <arg name="path_to_vocabulary" 
+          default="/home/administrator/SLAM/ORB_SLAM3/Vocabulary/ORBvoc.txt"/>
+     <arg name="path_to_settings" 
+          default="/home/administrator/SLAM/ORB_SLAM3/Examples/Stereo/ahg_turn_test.yaml"/>
+     <arg name="path_to_introspection_model" 
+          default="/home/administrator/DATA/MODEL/speedway_24th_cross/exported_model/iv_speedway_24th_cross_mobilenet_c1deepsup_light.pt"/>
+     <!--ORB-SLAM centric-->
+     <arg name="undistort_and_rectify_on" default="true"/>
+     <arg name="introspection_on" default="true"/>
+     <arg name="gpu_available" default="true"/>
+     <!-- ROS centric-->
+     <arg name="approximate_sync_on" default="true" doc="Set to true if incoming image pair timestamps are not exactly the same"/>
+     <arg name="image_transport_type" default="compressed" doc="'raw', 'compressed', 'theora' - image transport type of the subscribed image feeds"/>
+
+     <node pkg="ORB_SLAM3" 
+           type="Stereo" 
+           name="ORB_SLAM_Stereo" 
+           output="screen">
+
+          <param name="path_to_vocabulary" type="string" value="$(arg path_to_vocabulary)"/>
+          <param name="path_to_settings" type="string" value="$(arg path_to_settings)"/>
+          <param name="path_to_introspection_model" type="string" value="$(arg path_to_introspection_model)"/>
+
+          <param name="undistort_and_rectify_on" type="bool" value="$(arg undistort_and_rectify_on)"/>
+          <param name="introspection_on" type="bool" value="$(arg introspection_on)"/>
+          <param name="gpu_available" type="bool" value="$(arg gpu_available)"/>
+
+          <param name="approximate_sync_on" type="bool" value="$(arg approximate_sync_on)"/>
+          <param name="image_transport_type" type="string" value="$(arg image_transport_type)"/>
+     </node>
+
+</launch>
