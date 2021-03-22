@@ -39,6 +39,17 @@
 
 namespace ORB_SLAM3 {
 
+// Tracking states
+enum eTrackingState {
+  SYSTEM_NOT_READY = -1,
+  NO_IMAGES_YET = 0,
+  NOT_INITIALIZED = 1,
+  OK = 2,
+  RECENTLY_LOST = 3,
+  LOST = 4,
+  OK_KLT = 5
+};
+
 Verbose::eLevel Verbose::th = Verbose::VERBOSITY_NORMAL;
 
 System::System(const string &strVocFile,
@@ -191,7 +202,7 @@ System::System(const string &strVocFile,
 
   // Initialize the Tracking thread
   //(it will live in the main thread of execution, the one that called this
-  //constructor)
+  // constructor)
   cout << "Seq. Name: " << strSequence << endl;
   mpTracker = new Tracking(this,
                            mpVocabulary,
@@ -952,6 +963,23 @@ void System::ChangeDataset() {
   }
 
   mpTracker->NewDataset();
+}
+
+bool System::GetCurrentCamPose(cv::Matx44f *cam_pose_ptr) {
+  unique_lock<mutex> lock(mMutexState);
+
+  if (!cam_pose_ptr) {
+    cerr << "Passed GetCurrentCamPose a nullptr :(" << endl;
+  }
+
+  cv::Matx44f &cam_pose = *cam_pose_ptr;
+
+  if (mTrackingState != OK || mpTracker->mCurrentFramePose.empty()) {
+    return false;
+  } else {
+    cam_pose = mpTracker->mCurrentFramePose;
+    return true;
+  }
 }
 
 /*void System::SaveAtlas(int type){

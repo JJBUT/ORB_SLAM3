@@ -57,25 +57,42 @@ enum eTrackingState {
 };
 
 // Convert CV SE(3) mat to ROS Pose
-geometry_msgs::Pose cvMatToPose(cv::Mat& cv_pose) {
-  tf2::Matrix3x3 tf2_rot(cv_pose.at<float>(0, 0),
-                         cv_pose.at<float>(0, 1),
-                         cv_pose.at<float>(0, 2),
-                         cv_pose.at<float>(1, 0),
-                         cv_pose.at<float>(1, 1),
-                         cv_pose.at<float>(1, 2),
-                         cv_pose.at<float>(2, 0),
-                         cv_pose.at<float>(2, 1),
-                         cv_pose.at<float>(2, 2));
+geometry_msgs::Pose cvMatToPose(const cv::Matx44f& cv_pose) {
+  cv::Matx33f cv_rotation(cv_pose(0, 0),
+                          cv_pose(0, 1),
+                          cv_pose(0, 2),
+                          cv_pose(1, 0),
+                          cv_pose(1, 1),
+                          cv_pose(1, 2),
+                          cv_pose(2, 0),
+                          cv_pose(2, 1),
+                          cv_pose(2, 2));
+  cv::Matx31f cv_translation(cv_pose(0, 3), cv_pose(1, 3), cv_pose(2, 3));
 
-  tf2::Vector3 tf2_trans(cv_pose.at<float>(0, 3),
-                         cv_pose.at<float>(1, 3),
-                         cv_pose.at<float>(2, 3));
+  cv::Matx33f coordinate_rotation(
+      0.0, 0.0, 1.0, -1.0, 0.0, 0.0, 0.0, -1.0, 0.0);
 
-  // Create a transform and convert to a Pose
-  tf2::Transform tf2_transform(tf2_rot, tf2_trans);
+  cv::Matx33f rotated_cv_rotation = cv_rotation;  // TODO the rotation has a bug
+  cv::Matx31f rotated_cv_translation = coordinate_rotation * cv_translation;
+
+  // Convert to ROS types
+  tf2::Matrix3x3 tf2_rot(rotated_cv_rotation(0, 0),
+                         rotated_cv_rotation(0, 1),
+                         rotated_cv_rotation(0, 2),
+                         rotated_cv_rotation(1, 0),
+                         rotated_cv_rotation(1, 1),
+                         rotated_cv_rotation(1, 2),
+                         rotated_cv_rotation(2, 0),
+                         rotated_cv_rotation(2, 1),
+                         rotated_cv_rotation(2, 2));
+  tf2::Vector3 tf2_trans(rotated_cv_translation(0),
+                         rotated_cv_translation(1),
+                         rotated_cv_translation(2));
+
+  // Create a tf2 pose/transform and convert to a Pose
+  tf2::Transform tf2_pose(tf2_rot, tf2_trans);
   geometry_msgs::Pose ros_pose;
-  tf2::toMsg(tf2_transform, ros_pose);
+  tf2::toMsg(tf2_pose, ros_pose);
 
   return ros_pose;
 }
@@ -380,24 +397,29 @@ void ImageGrabber::GrabStereo(const sensor_msgs::ImageConstPtr& msgLeft,
   }
 
   // Pass the images to the SLAM system
-  cv::Mat cv_pose;
   if (this->introspection_on) {
-    cv_pose = mpSLAM->TrackStereo(imLeft,
-                                  imRight,
-                                  cv_ptrLeft->header.stamp.toSec(),
-                                  this->introspection_on,
-                                  cost_img_cv);
+    mpSLAM->TrackStereo(imLeft,
+                        imRight,
+                        cv_ptrLeft->header.stamp.toSec(),
+                        this->introspection_on,
+                        cost_img_cv);
   } else {
-    cv_pose =
-        mpSLAM->TrackStereo(imLeft, imRight, cv_ptrLeft->header.stamp.toSec());
+    mpSLAM->TrackStereo(imLeft, imRight, cv_ptrLeft->header.stamp.toSec());
   }
+
   // Publish the pose
-  geometry_msgs::PoseStamped ros_pose_stamped;
-  ros_pose_stamped.pose = cvMatToPose(cv_pose);
-  ros_pose_stamped.header.stamp =
-      cv_ptrLeft->header.stamp;  // This time may be old by now?
-  ros_pose_stamped.header.frame_id = "orb_slam";
-  pose_pub_.publish(ros_pose_stamped);
+  cv::Matx44f cv_pose;
+  if (mpSLAM->GetCurrentCamPose(&cv_pose)) {
+    geometry_msgs::PoseStamped ros_pose_stamped;
+    ros_pose_stamped.pose = cvMatToPose(cv_pose);
+    // ros_pose_stamped.header.stamp =
+    //    cv_ptrLeft->header.stamp;  // TODO This time may be old by now?
+    ros_pose_stamped.header.frame_id = "orb_slam";
+
+    pose_pub_.publish(ros_pose_stamped);
+  } else {
+    ROS_WARN("Could not retrieve pose to publish :(");
+  }
 
   return;
 }

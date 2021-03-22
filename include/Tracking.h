@@ -184,6 +184,10 @@ class Tracking {
 
   bool mbWriteStats;
 
+  // Estimated camera pose for the latest received frame in the map/odom frame
+  // using ORB-SLAM coordinate system
+  cv::Mat mCurrentFramePose;
+
  protected:
   // Main tracking function. It is independent of the input sensor.
   void Track();
@@ -229,6 +233,8 @@ class Tracking {
                                 float &bax,
                                 float &bay,
                                 float &baz);
+
+  cv::Mat CalculateInverseTransform(const cv::Mat &transform);
 
   bool mbMapUpdated;
 

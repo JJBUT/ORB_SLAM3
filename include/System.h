@@ -203,6 +203,8 @@ class System {
   bool isLost();
   bool isFinished();
 
+  bool GetCurrentCamPose(cv::Matx44f *cam_pose_ptr);
+
   void ChangeDataset();
 
   // void SaveAtlas(int type);
@@ -235,9 +237,9 @@ class System {
   // adjustment.
   LocalMapping *mpLocalMapper;
 
-  // Loop Closer. It searches loops with every new keyframe. If there is a loop
-  // it performs a pose graph optimization and full bundle adjustment (in a new
-  // thread) afterwards.
+  // Loop Closer. It searches loops with every new keyframe. If there is a
+  // loop it performs a pose graph optimization and full bundle adjustment (in
+  // a new thread) afterwards.
   LoopClosing *mpLoopCloser;
 
   // The viewer draws the map and the current camera pose. It uses Pangolin.
