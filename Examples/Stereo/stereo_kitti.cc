@@ -172,7 +172,8 @@ int main(int argc, char **argv) {
                          FLAGS_path_to_settings,
                          ORB_SLAM3::System::STEREO,
                          FLAGS_viewer_on,
-                         FLAGS_introspection_on);
+                         FLAGS_introspection_on,
+                         FLAGS_generate_training_data_on);
 
   // Vector for tracking time statistics
   vector<float> vTimesTrack;
@@ -245,9 +246,8 @@ int main(int argc, char **argv) {
 #endif
 
     // Pass the images to the SLAM system
-    if (FLAGS_introspection_on) {
-      SLAM.TrackStereo(
-          imLeft, imRight, tframe, FLAGS_introspection_on, cost_img_cv);
+    if (SLAM.IntrospectionOn()) {
+      SLAM.TrackStereo(imLeft, imRight, tframe, cost_img_cv);
     } else {
       SLAM.TrackStereo(imLeft, imRight, tframe);
     }

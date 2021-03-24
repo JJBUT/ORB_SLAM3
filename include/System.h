@@ -99,14 +99,16 @@ class System {
          const int initFr,
          const string &strSequence = std::string(),
          const string &strLoadingFile = std::string(),
-         const bool introspection_on = false);
+         const bool introspection_on = false,
+         const bool generate_training_data_on = false);
 
   // With introspection
   System(const string &strVocFile,
          const string &strSettingsFile,
          const eSensor sensor,
          const bool bUseViewer,
-         const bool introspection_on = false);
+         const bool introspection_on = false,
+         const bool generate_training_data_on = false);
 
   // Proccess the given stereo frame. Images must be synchronized and rectified.
   // Input images: RGB (CV_8UC3) or grayscale (CV_8U). RGB is converted to
@@ -116,14 +118,12 @@ class System {
                       const double &timestamp,
                       const vector<IMU::Point> &vImuMeas = vector<IMU::Point>(),
                       string filename = "",
-                      const bool introspection_on = false,
                       const cv::Mat &costmap = cv::Mat());
 
   // With introspection
   cv::Mat TrackStereo(const cv::Mat &imLeft,
                       const cv::Mat &imRight,
                       const double &timestamp,
-                      const bool introspection_on,
                       const cv::Mat &costmap);
 
   // Process the given rgbd frame. Depthmap must be registered to the RGB frame.
@@ -209,6 +209,10 @@ class System {
 
   // void SaveAtlas(int type);
 
+  // With introspection
+  bool IntrospectionOn() const { return cbIntrospectionOn; }
+  bool GenerateTrainingDataOn() const { return cbGenerateTrainingDataOn; }
+
  private:
   // bool LoadAtlas(string filename, int type);
 
@@ -270,6 +274,10 @@ class System {
   std::vector<MapPoint *> mTrackedMapPoints;
   std::vector<cv::KeyPoint> mTrackedKeyPointsUn;
   std::mutex mMutexState;
+
+  // With regards to IV-SLAM
+  bool const cbIntrospectionOn;
+  bool const cbGenerateTrainingDataOn;
 };
 
 }  // namespace ORB_SLAM3

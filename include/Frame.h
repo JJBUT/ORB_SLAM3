@@ -64,7 +64,6 @@ class Frame {
         GeometricCamera *pCamera,
         Frame *pPrevF = static_cast<Frame *>(NULL),
         const IMU::Calib &ImuCalib = IMU::Calib(),
-        const bool introspection_on = false,
         const cv::Mat &costmap = cv::Mat());
   // With introspection
   Frame(const cv::Mat &imLeft,
@@ -78,7 +77,6 @@ class Frame {
         const float &bf,
         const float &thDepth,
         GeometricCamera *pCamera,
-        const bool introspection_on,
         const cv::Mat &costmap);
 
   // Constructor for RGB-D cameras.
@@ -118,7 +116,6 @@ class Frame {
                                  const cv::Mat &im,
                                  const int x0,
                                  const int x1,
-                                 const bool introspection_on,
                                  const cv::Mat &costmap);
 
   // Compute Bag of Words representation.

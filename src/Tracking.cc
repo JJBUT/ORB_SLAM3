@@ -18,9 +18,9 @@
  * You should have received a copy of the GNU General Public License along with
  * ORB-SLAM3. If not, see <http://www.gnu.org/licenses/>.
  */
-
 #include "Tracking.h"
 
+#include <glog/logging.h>
 #include <include/CameraModels/KannalaBrandt8.h>
 #include <include/CameraModels/Pinhole.h>
 #include <include/MLPnPsolver.h>
@@ -708,16 +708,27 @@ bool Tracking::ParseORBParamFile(cv::FileStorage &fSettings) {
     return false;
   }
 
-  mpORBextractorLeft = new ORBextractor(
-      nFeatures, fScaleFactor, nLevels, fIniThFAST, fMinThFAST);
+  mpORBextractorLeft = new ORBextractor(nFeatures,
+                                        fScaleFactor,
+                                        nLevels,
+                                        fIniThFAST,
+                                        fMinThFAST,
+                                        mpSystem->IntrospectionOn());
 
-  if (mSensor == System::STEREO || mSensor == System::IMU_STEREO)
-    mpORBextractorRight = new ORBextractor(
-        nFeatures, fScaleFactor, nLevels, fIniThFAST, fMinThFAST);
+  if (mSensor == System::STEREO || mSensor == System::IMU_STEREO) {
+    mpORBextractorRight = new ORBextractor(nFeatures,
+                                           fScaleFactor,
+                                           nLevels,
+                                           fIniThFAST,
+                                           fMinThFAST,
+                                           mpSystem->IntrospectionOn());
+  }
 
-  if (mSensor == System::MONOCULAR || mSensor == System::IMU_MONOCULAR)
+  if (mSensor == System::MONOCULAR || mSensor == System::IMU_MONOCULAR) {
+    LOG(FATAL) << "IV-SLAM not configured for this instance";
     mpIniORBextractor = new ORBextractor(
         5 * nFeatures, fScaleFactor, nLevels, fIniThFAST, fMinThFAST);
+  }
 
   cout << endl << "ORB Extractor Parameters: " << endl;
   cout << "- Number of Features: " << nFeatures << endl;
@@ -836,7 +847,6 @@ cv::Mat Tracking::GrabImageStereo(const cv::Mat &imRectLeft,
                                   const cv::Mat &imRectRight,
                                   const double &timestamp,
                                   string filename,
-                                  const bool introspection_on,
                                   const cv::Mat &costmap) {
   mImGray = imRectLeft;
   cv::Mat imGrayRight = imRectRight;
@@ -873,9 +883,9 @@ cv::Mat Tracking::GrabImageStereo(const cv::Mat &imRectLeft,
                           mbf,
                           mThDepth,
                           mpCamera,
-                          introspection_on,
                           costmap);
   } else if (mSensor == System::STEREO && mpCamera2) {
+    LOG(FATAL) << "IV-SLAM not configured for this instance";
     mCurrentFrame = Frame(mImGray,
                           imGrayRight,
                           timestamp,
@@ -890,6 +900,7 @@ cv::Mat Tracking::GrabImageStereo(const cv::Mat &imRectLeft,
                           mpCamera2,
                           mTlr);
   } else if (mSensor == System::IMU_STEREO && !mpCamera2) {
+    LOG(FATAL) << "IV-SLAM not configured for this instance";
     mCurrentFrame = Frame(mImGray,
                           imGrayRight,
                           timestamp,
@@ -904,6 +915,7 @@ cv::Mat Tracking::GrabImageStereo(const cv::Mat &imRectLeft,
                           &mLastFrame,
                           *mpImuCalib);
   } else if (mSensor == System::IMU_STEREO && mpCamera2) {
+    LOG(FATAL) << "IV-SLAM not configured for this instance";
     mCurrentFrame = Frame(mImGray,
                           imGrayRight,
                           timestamp,

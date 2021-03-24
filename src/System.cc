@@ -21,6 +21,7 @@
 
 #include "System.h"
 
+#include <glog/logging.h>
 #include <openssl/md5.h>
 #include <pangolin/pangolin.h>
 
@@ -59,13 +60,16 @@ System::System(const string &strVocFile,
                const int initFr,
                const string &strSequence,
                const string &strLoadingFile,
-               const bool introspection_on)
+               const bool introspection_on,
+               const bool generate_training_data_on)
     : mSensor(sensor),
       mpViewer(static_cast<Viewer *>(NULL)),
       mbReset(false),
       mbResetActiveMap(false),
       mbActivateLocalizationMode(false),
-      mbDeactivateLocalizationMode(false) {
+      mbDeactivateLocalizationMode(false),
+      cbIntrospectionOn(introspection_on),
+      cbGenerateTrainingDataOn(generate_training_data_on) {
   // Output welcome message
   cout << endl
        << "ORB-SLAM3 Copyright (C) 2017-2020 Carlos Campos, Richard Elvira, "
@@ -93,6 +97,10 @@ System::System(const string &strVocFile,
     cout << "Monocular-Inertial" << endl;
   else if (mSensor == IMU_STEREO)
     cout << "Stereo-Inertial" << endl;
+
+  CHECK(!(cbIntrospectionOn == true && cbGenerateTrainingDataOn == true))
+      << ": You can not set both INTROSPECTION_ON and "
+         "GENERATE_TRAINING_DATA_ON to 'true' -_-";
 
   // Check settings file
   cv::FileStorage fsSettings(strSettingsFile.c_str(), cv::FileStorage::READ);
@@ -269,7 +277,8 @@ System::System(const string &strVocFile,
                const string &strSettingsFile,
                const eSensor sensor,
                const bool bUseViewer,
-               const bool introspection_on)
+               const bool introspection_on,
+               const bool generate_training_data_on)
     : System(strVocFile,
              strSettingsFile,
              sensor,
@@ -277,14 +286,14 @@ System::System(const string &strVocFile,
              0,
              std::string(),
              std::string(),
-             introspection_on) {}
+             introspection_on,
+             generate_training_data_on) {}
 
 cv::Mat System::TrackStereo(const cv::Mat &imLeft,
                             const cv::Mat &imRight,
                             const double &timestamp,
                             const vector<IMU::Point> &vImuMeas,
                             string filename,
-                            const bool introspection_on,
                             const cv::Mat &costmap) {
   if (mSensor != STEREO && mSensor != IMU_STEREO) {
     cerr << "ERROR: you called TrackStereo but input sensor was not set to "
@@ -332,11 +341,8 @@ cv::Mat System::TrackStereo(const cv::Mat &imLeft,
     for (size_t i_imu = 0; i_imu < vImuMeas.size(); i_imu++)
       mpTracker->GrabImuData(vImuMeas[i_imu]);
 
-  // std::cout << "start GrabImageStereo" << std::endl;
-  cv::Mat Tcw = mpTracker->GrabImageStereo(
-      imLeft, imRight, timestamp, filename, introspection_on, costmap);
-
-  // std::cout << "out grabber" << std::endl;
+  cv::Mat Tcw =
+      mpTracker->GrabImageStereo(imLeft, imRight, timestamp, filename, costmap);
 
   unique_lock<mutex> lock2(mMutexState);
   mTrackingState = mpTracker->mState;
@@ -350,19 +356,12 @@ cv::Mat System::TrackStereo(const cv::Mat &imLeft,
 cv::Mat System::TrackStereo(const cv::Mat &imLeft,
                             const cv::Mat &imRight,
                             const double &timestamp,
-                            const bool introspection_on,
                             const cv::Mat &costmap) {
   // Handler to allow for default argument order - provide blank args to the the
   // two middle args
   const vector<IMU::Point> vImuMeas = vector<IMU::Point>();
   string filename = "";
-  return TrackStereo(imLeft,
-                     imRight,
-                     timestamp,
-                     vImuMeas,
-                     filename,
-                     introspection_on,
-                     costmap);
+  return TrackStereo(imLeft, imRight, timestamp, vImuMeas, filename, costmap);
 }
 
 cv::Mat System::TrackRGBD(const cv::Mat &im,
