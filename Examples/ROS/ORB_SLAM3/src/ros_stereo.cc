@@ -412,8 +412,8 @@ void ImageGrabber::GrabStereo(const sensor_msgs::ImageConstPtr& msgLeft,
   if (mpSLAM->GetCurrentCamPose(&cv_pose)) {
     geometry_msgs::PoseStamped ros_pose_stamped;
     ros_pose_stamped.pose = cvMatToPose(cv_pose);
-    // ros_pose_stamped.header.stamp =
-    //    cv_ptrLeft->header.stamp;  // TODO This time may be old by now?
+    ros_pose_stamped.header.stamp =
+        cv_ptrLeft->header.stamp;  // TODO This time may be old by now?
     ros_pose_stamped.header.frame_id = "orb_slam";
 
     pose_pub_.publish(ros_pose_stamped);
