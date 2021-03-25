@@ -125,6 +125,8 @@ class Frame {
   void SetPose(cv::Mat Tcw);
   void GetPose(cv::Mat &Tcw);
 
+  void SetGroundTruthPose(cv::Mat Twc_gt);
+
   // Set IMU velocity
   void SetVelocity(const cv::Mat &Vwb);
 
@@ -256,6 +258,16 @@ class Frame {
 
   // Camera pose.
   cv::Mat mTcw;
+
+  // With regards IV-SLAM - The ground truth camera pose (filled in and used
+  // only when in training mode) - gt = "groundtruth"
+  // This transformation takes a point from the camera reference frame to the
+  // world reference frame
+  cv::Mat mTwc_gt;
+
+  // The same as above, but takes points from the world reference frame to
+  // the camera reference frame
+  cv::Mat mTcw_gt;
 
   // IMU linear velocity
   cv::Mat mVw;

@@ -179,7 +179,8 @@ Frame::Frame(const cv::Mat &imLeft,
   std::chrono::steady_clock::time_point time_StartExtORB =
       std::chrono::steady_clock::now();
 #endif
-  if (extractorLeft->IntrospectionOn() /*or could be extractorRight*/) {
+  if (extractorLeft->IntrospectionOn() /*or could be extractorRight*/ &&
+      !costmap.empty()) {
     // With introspection
     thread threadLeft(
         &Frame::ExtractORBIntrospectively, this, 0, imLeft, 0, 0, costmap);
@@ -620,6 +621,21 @@ void Frame::SetPose(cv::Mat Tcw) {
 }
 
 void Frame::GetPose(cv::Mat &Tcw) { Tcw = mTcw.clone(); }
+
+// With regards IV-SLAM
+void Frame::SetGroundTruthPose(cv::Mat Twc_gt) {
+  mTwc_gt = Twc_gt.clone();
+
+  // Invert Twc
+  cv::Mat Rwc_gt = mTwc_gt.rowRange(0, 3).colRange(0, 3);
+  cv::Mat twc_gt = mTwc_gt.rowRange(0, 3).col(3);
+  cv::Mat Rcw_gt = Rwc_gt.t();
+  cv::Mat tcw_gt = -Rcw_gt * twc_gt;
+
+  mTcw_gt = cv::Mat::eye(4, 4, mTwc_gt.type());
+  Rcw_gt.copyTo(mTcw_gt.rowRange(0, 3).colRange(0, 3));
+  tcw_gt.copyTo(mTcw_gt.rowRange(0, 3).col(3));
+}
 
 void Frame::SetNewBias(const IMU::Bias &b) {
   mImuBias = b;

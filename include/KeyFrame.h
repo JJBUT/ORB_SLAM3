@@ -274,6 +274,8 @@ class KeyFrame {
 
   cv::Mat GetPose();
   cv::Mat GetPoseInverse();
+  cv::Mat GetGroundTruthPose();
+  cv::Mat GetGroundTruthPoseInverse();
   cv::Mat GetCameraCenter();
   cv::Mat GetImuPosition();
   cv::Mat GetImuRotation();
@@ -509,6 +511,10 @@ class KeyFrame {
   cv::Mat Twc;
   cv::Mat Ow;
   cv::Mat Cw;  // Stereo middel point. Only for visualization
+
+  // The ground truth camera pose (filled in and used only when in training
+  // mode)
+  cv::Mat mTwc_gt;
 
   // IMU position
   cv::Mat Owb;
