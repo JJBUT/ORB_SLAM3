@@ -847,7 +847,8 @@ cv::Mat Tracking::GrabImageStereo(const cv::Mat &imRectLeft,
                                   const cv::Mat &imRectRight,
                                   const double &timestamp,
                                   string filename,
-                                  const cv::Mat &costmap) {
+                                  const cv::Mat &costmap,
+                                  const cv::Mat &groundtruth_pose) {
   mImGray = imRectLeft;
   cv::Mat imGrayRight = imRectRight;
   mImRight = imRectRight;
@@ -931,6 +932,10 @@ cv::Mat Tracking::GrabImageStereo(const cv::Mat &imRectLeft,
                           mTlr,
                           &mLastFrame,
                           *mpImuCalib);
+  }
+
+  if (mpSystem->GenerateTrainingDataOn() && !groundtruth_pose.empty()) {
+    mCurrentFrame.SetGroundTruthPose(groundtruth_pose);
   }
 
   std::chrono::steady_clock::time_point t0 = std::chrono::steady_clock::now();
@@ -1676,9 +1681,9 @@ void Tracking::Track() {
       }
     }
 
-    if (!mCurrentFrame.mpReferenceKF)
+    if (!mCurrentFrame.mpReferenceKF) {
       mCurrentFrame.mpReferenceKF = mpReferenceKF;
-
+    }
     // If we have an initial estimation of the camera pose and matching. Track
     // the local map.
     if (!mbOnlyTracking) {

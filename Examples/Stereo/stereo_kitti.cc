@@ -208,7 +208,7 @@ int main(int argc, char **argv) {
     }
 
     // Feed image to model to create cost mask
-    cv::Mat cost_img_cv;
+    cv::Mat cost_image_cv;
     at::Tensor cost_img;
     if (FLAGS_introspection_on) {
       // Run inference on the introspection model online
@@ -235,7 +235,7 @@ int main(int argc, char **argv) {
       cost_img = (cost_img * 255.0).to(torch::kByte);
       cost_img = cost_img.to(torch::kCPU);
 
-      cost_img_cv = ORB_SLAM3::ToCvImage(cost_img);
+      cost_image_cv = ORB_SLAM3::ToCvImage(cost_img);
     }
 
 #ifdef COMPILEDWITHC11
@@ -247,7 +247,10 @@ int main(int argc, char **argv) {
 
     // Pass the images to the SLAM system
     if (SLAM.IntrospectionOn()) {
-      SLAM.TrackStereo(imLeft, imRight, tframe, cost_img_cv);
+      SLAM.TrackStereoIntrospection(imLeft, imRight, tframe, cost_image_cv);
+    } else if (SLAM.GenerateTrainingDataOn()) {
+      SLAM.TrackStereoTrainingDataGeneration(
+          imLeft, imRight, tframe, vGroundTruthPoses[ni]);
     } else {
       SLAM.TrackStereo(imLeft, imRight, tframe);
     }
