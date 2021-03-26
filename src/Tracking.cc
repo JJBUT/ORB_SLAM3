@@ -1764,10 +1764,19 @@ void Tracking::Track() {
       }
     }
 
-    // Update drawer and systems current pose
+    // Update drawer
     mpFrameDrawer->Update(this);
-    if (!mCurrentFrame.mTcw.empty()) {
+    if (mpSystem->GenerateTrainingDataOn() && !mCurrentFrame.mTcw_gt.empty() &&
+        !mCurrentFrame.mTcw.empty()) {
+      // Groundtruth available
       mpMapDrawer->SetCurrentCameraPose(mCurrentFrame.mTcw);
+    } else if (!mCurrentFrame.mTcw.empty()) {
+      // No grountruth available
+      mpMapDrawer->SetCurrentCameraPose(mCurrentFrame.mTcw);
+    }
+
+    // Update current pose in world frame
+    if (!mCurrentFrame.mTcw.empty()) {
       mCurrentFramePose = CalculateInverseTransform(mCurrentFrame.mTcw);
     }
 

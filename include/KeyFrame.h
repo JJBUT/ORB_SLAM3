@@ -516,6 +516,10 @@ class KeyFrame {
   // mode)
   cv::Mat mTwc_gt;
 
+  // The ground truth camera pose inverse (filled in and used only when in
+  // training mode)
+  cv::Mat mTcw_gt;
+
   // IMU position
   cv::Mat Owb;
 

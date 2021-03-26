@@ -23,6 +23,7 @@
 
 #include <pangolin/pangolin.h>
 
+#include <algorithm>
 #include <mutex>
 
 #include "KeyFrame.h"
@@ -30,8 +31,10 @@
 
 namespace ORB_SLAM3 {
 
-MapDrawer::MapDrawer(Atlas *pAtlas, const string &strSettingPath)
-    : mpAtlas(pAtlas) {
+MapDrawer::MapDrawer(Atlas *pAtlas,
+                     const string &strSettingPath,
+                     const bool visualize_groundtruth_on)
+    : mpAtlas(pAtlas), cbVisualizeGroundTruthOn(visualize_groundtruth_on) {
   cv::FileStorage fSettings(strSettingPath, cv::FileStorage::READ);
 
   bool is_correct = ParseViewerParamFile(fSettings);
@@ -172,11 +175,11 @@ void MapDrawer::DrawKeyFrames(const bool bDrawKF,
         glBegin(GL_LINES);
 
         // cout << "Initial KF: " <<
-        // mpAtlas->GetCurrentMap()->GetOriginKF()->mnId << endl; cout << "Parent
-        // KF: " << vpKFs[i]->mnId << endl;
+        // mpAtlas->GetCurrentMap()->GetOriginKF()->mnId << endl; cout <<
+        // "Parent KF: " << vpKFs[i]->mnId << endl;
       } else {
         glLineWidth(mKeyFrameLineWidth);
-        // glColor3f(0.0f,0.0f,1.0f);
+        // glColor3f(0.0f, 0.0f, 1.0f);
         glColor3f(mfFrameColors[index_color][0],
                   mfFrameColors[index_color][1],
                   mfFrameColors[index_color][2]);
@@ -207,35 +210,79 @@ void MapDrawer::DrawKeyFrames(const bool bDrawKF,
 
       glPopMatrix();
 
-      // Draw lines with Loop and Merge candidates
-      /*glLineWidth(mGraphLineWidth);
-      glColor4f(1.0f,0.6f,0.0f,1.0f);
-      glBegin(GL_LINES);
-      cv::Mat Ow = pKF->GetCameraCenter();
-      const vector<KeyFrame*> vpLoopCandKFs = pKF->mvpLoopCandKFs;
-      if(!vpLoopCandKFs.empty())
-      {
-          for(vector<KeyFrame*>::const_iterator vit=vpLoopCandKFs.begin(),
-      vend=vpLoopCandKFs.end(); vit!=vend; vit++)
-          {
-              cv::Mat Ow2 = (*vit)->GetCameraCenter();
-              glVertex3f(Ow.at<float>(0),Ow.at<float>(1),Ow.at<float>(2));
-              glVertex3f(Ow2.at<float>(0),Ow2.at<float>(1),Ow2.at<float>(2));
-          }
-      }
-      const vector<KeyFrame*> vpMergeCandKFs = pKF->mvpMergeCandKFs;
-      if(!vpMergeCandKFs.empty())
-      {
-          for(vector<KeyFrame*>::const_iterator vit=vpMergeCandKFs.begin(),
-      vend=vpMergeCandKFs.end(); vit!=vend; vit++)
-          {
-              cv::Mat Ow2 = (*vit)->GetCameraCenter();
-              glVertex3f(Ow.at<float>(0),Ow.at<float>(1),Ow.at<float>(2));
-              glVertex3f(Ow2.at<float>(0),Ow2.at<float>(1),Ow2.at<float>(2));
-          }
-      }*/
-
       glEnd();
+    }
+
+    // With Regards IV-SLAM - Visualize groundtruth pose if it is available and
+    // requested
+
+    if (cbVisualizeGroundTruthOn) {
+      int const history_length = 5;
+      size_t st_idx =
+          std::max(0, static_cast<int>(vpKFs.size()) - history_length);
+      cout << "KF Count: " << vpKFs.size() << " st_idx " << st_idx << endl;
+      for (size_t i = st_idx; i < vpKFs.size(); i++) {
+        KeyFrame *pKF = vpKFs[i];
+        if (!pKF->GetGroundTruthPose().empty()) {
+          cv::Mat Twc_gt = pKF->GetGroundTruthPose();
+          cout << "New gt KF" << endl;
+          if (i == st_idx) {
+            cout << "Initialized origin" << endl;
+            mTwc_vis_init_gt = Twc_gt;
+            mTwc_vis_init = pKF->GetPoseInverse();
+          }
+
+          // Calculate the ground truth pose of current keyframe wrt
+          // mTwc_gt_vis_init and then overlay mTwc_gt_vis_init on
+          // mTwc_vis_init
+          cv::Mat Twc_gt_transformed =
+              mTwc_vis_init *
+              CalculateRelativeTransform(mTwc_vis_init_gt, Twc_gt);
+
+          Twc_gt_transformed = Twc_gt_transformed.t();
+
+          glPushMatrix();
+
+          glMultMatrixf(Twc_gt_transformed.ptr<GLfloat>(0));
+
+          if (!pKF->GetParent())  // It is the first KF in the map
+          {
+            glLineWidth(mKeyFrameLineWidth * 5);
+            glColor3f(1.0f, 0.0f, 1.0f);
+            glBegin(GL_LINES);
+          } else {
+            glLineWidth(mKeyFrameLineWidth);
+            glColor3f(1.0f, 0.0f, 1.0f);
+            glBegin(GL_LINES);
+          }
+
+          glVertex3f(0, 0, 0);
+          glVertex3f(w, h, z);
+          glVertex3f(0, 0, 0);
+          glVertex3f(w, -h, z);
+          glVertex3f(0, 0, 0);
+          glVertex3f(-w, -h, z);
+          glVertex3f(0, 0, 0);
+          glVertex3f(-w, h, z);
+
+          glVertex3f(w, h, z);
+          glVertex3f(w, -h, z);
+
+          glVertex3f(-w, h, z);
+          glVertex3f(-w, -h, z);
+
+          glVertex3f(-w, h, z);
+          glVertex3f(w, h, z);
+
+          glVertex3f(-w, -h, z);
+          glVertex3f(w, -h, z);
+          glEnd();
+
+          glPopMatrix();
+
+          glEnd();
+        }
+      }
     }
   }
 
@@ -305,6 +352,8 @@ void MapDrawer::DrawKeyFrames(const bool bDrawKF,
     glEnd();
   }
 
+  // Drawing all maps is confusing
+  /*
   vector<Map *> vpMaps = mpAtlas->GetAllMaps();
 
   if (bDrawKF) {
@@ -362,6 +411,7 @@ void MapDrawer::DrawKeyFrames(const bool bDrawKF,
       }
     }
   }
+  */
 }
 
 void MapDrawer::DrawCurrentCamera(pangolin::OpenGlMatrix &Twc) {
@@ -408,6 +458,16 @@ void MapDrawer::DrawCurrentCamera(pangolin::OpenGlMatrix &Twc) {
 void MapDrawer::SetCurrentCameraPose(const cv::Mat &Tcw) {
   unique_lock<mutex> lock(mMutexCamera);
   mCameraPose = Tcw.clone();
+  mbGTCameraPoseAvailable = false;
+}
+
+// With regards IV-SLAM
+void MapDrawer::SetCurrentCameraPose(const cv::Mat &Tcw,
+                                     const cv::Mat &Tcw_gt) {
+  unique_lock<mutex> lock(mMutexCamera);
+  mCameraPose = Tcw.clone();
+  mCameraPose_gt = Tcw_gt.clone();
+  mbGTCameraPoseAvailable = true;
 }
 
 void MapDrawer::GetCurrentOpenGLCameraMatrix(pangolin::OpenGlMatrix &M,
@@ -510,6 +570,28 @@ void MapDrawer::GetCurrentOpenGLCameraMatrix(pangolin::OpenGlMatrix &M,
     MOw.SetIdentity();
     MTwwp.SetIdentity();
   }
+}
+
+cv::Mat MapDrawer::CalculateRelativeTransform(const cv::Mat &dest_frame_pose,
+                                              const cv::Mat &src_frame_pose) {
+  return CalculateInverseTransform(dest_frame_pose) * src_frame_pose;
+}
+
+cv::Mat MapDrawer::CalculateInverseTransform(const cv::Mat &transform) {
+  if (transform.empty()) {
+    std::cout << "MATRIX IS EMPTY!! " << std::endl;
+  }
+
+  cv::Mat R1 = transform.rowRange(0, 3).colRange(0, 3);
+  cv::Mat t1 = transform.rowRange(0, 3).col(3);
+  cv::Mat R1_inv = R1.t();
+  cv::Mat t1_inv = -R1_inv * t1;
+  cv::Mat transform_inv = cv::Mat::eye(4, 4, transform.type());
+
+  R1_inv.copyTo(transform_inv.rowRange(0, 3).colRange(0, 3));
+  t1_inv.copyTo(transform_inv.rowRange(0, 3).col(3));
+
+  return transform_inv;
 }
 
 }  // namespace ORB_SLAM3

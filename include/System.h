@@ -100,7 +100,8 @@ class System {
          const string &strSequence = std::string(),
          const string &strLoadingFile = std::string(),
          const bool introspection_on = false,
-         const bool generate_training_data_on = false);
+         const bool generate_training_data_on = false,
+         const bool visualize_groundtruth_on = false);
 
   // With introspection
   System(const string &strVocFile,
@@ -108,7 +109,8 @@ class System {
          const eSensor sensor,
          const bool bUseViewer,
          const bool introspection_on = false,
-         const bool generate_training_data_on = false);
+         const bool generate_training_data_on = false,
+         const bool visualize_groundtruth_on = false);
 
   // Proccess the given stereo frame. Images must be synchronized and rectified.
   // Input images: RGB (CV_8UC3) or grayscale (CV_8U). RGB is converted to

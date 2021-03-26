@@ -54,7 +54,12 @@ DEFINE_bool(introspection_on,
 DEFINE_bool(generate_training_data_on,
             false,
             "Given an image sequence and ground truth posese generate training "
-            "data for the intropsection model");
+            "data for the intropsection model ");
+DEFINE_bool(
+    visualize_groundtruth_on,
+    false,
+    "Visualize the ground truth keyframe and camera poses - relative to some "
+    "buffer - not in an absolute sense because drift makes it meaningless");
 DEFINE_bool(gpu_available, false, "Set to true if a GPU is available to use.");
 DEFINE_bool(viewer_on, true, "Enable image and keyframe viewer.");
 DEFINE_bool(undistort_rectify_on,
@@ -173,7 +178,8 @@ int main(int argc, char **argv) {
                          ORB_SLAM3::System::STEREO,
                          FLAGS_viewer_on,
                          FLAGS_introspection_on,
-                         FLAGS_generate_training_data_on);
+                         FLAGS_generate_training_data_on,
+                         FLAGS_visualize_groundtruth_on);
 
   // Vector for tracking time statistics
   vector<float> vTimesTrack;
@@ -341,7 +347,7 @@ void LoadImages(const string &strPathToSequence,
       string s;
       getline(fGroundTruthPoses, s);
       if (!s.empty()) {
-        cv::Mat camera_pose = cv::Mat::zeros(4, 4, CV_32F);
+        cv::Mat camera_pose = cv::Mat::eye(4, 4, CV_32F);
         stringstream ss(s);
         string str_current_entry;
 

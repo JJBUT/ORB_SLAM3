@@ -60,7 +60,8 @@ System::System(const string &strVocFile,
                const string &strSequence,
                const string &strLoadingFile,
                const bool introspection_on,
-               const bool generate_training_data_on)
+               const bool generate_training_data_on,
+               const bool visualize_groundtruth_on)
     : mSensor(sensor),
       mpViewer(static_cast<Viewer *>(NULL)),
       mbReset(false),
@@ -99,6 +100,11 @@ System::System(const string &strVocFile,
   CHECK(!(cbIntrospectionOn == true && cbGenerateTrainingDataOn == true))
       << ": You can not set both INTROSPECTION_ON and "
          "GENERATE_TRAINING_DATA_ON to 'true' -_-";
+  CHECK(
+      !(visualize_groundtruth_on == true && cbGenerateTrainingDataOn == false))
+      << ": You can not set VISUALIZE_GROUNDTRUTH_ON to 'true' and "
+         "GENERATE_TRAINING_DATA_ON to 'false' - you need to provide the "
+         "groundtruth poses -_-";
 
   // Check settings file
   cv::FileStorage fsSettings(strSettingsFile.c_str(), cv::FileStorage::READ);
@@ -204,7 +210,8 @@ System::System(const string &strVocFile,
 
   // Create Drawers. These are used by the Viewer
   mpFrameDrawer = new FrameDrawer(mpAtlas);
-  mpMapDrawer = new MapDrawer(mpAtlas, strSettingsFile);
+  mpMapDrawer =
+      new MapDrawer(mpAtlas, strSettingsFile, visualize_groundtruth_on);
 
   // Initialize the Tracking thread
   //(it will live in the main thread of execution, the one that called this
@@ -276,7 +283,8 @@ System::System(const string &strVocFile,
                const eSensor sensor,
                const bool bUseViewer,
                const bool introspection_on,
-               const bool generate_training_data_on)
+               const bool generate_training_data_on,
+               const bool visualize_groundtruth_on)
     : System(strVocFile,
              strSettingsFile,
              sensor,
@@ -285,7 +293,8 @@ System::System(const string &strVocFile,
              std::string(),
              std::string(),
              introspection_on,
-             generate_training_data_on) {}
+             generate_training_data_on,
+             visualize_groundtruth_on) {}
 
 cv::Mat System::TrackStereo(const cv::Mat &imLeft,
                             const cv::Mat &imRight,

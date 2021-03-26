@@ -172,7 +172,8 @@ KeyFrame::KeyFrame(Frame &F, Map *pMap, KeyFrameDatabase *pKFDB)
       NRight(F.Nright),
       mTrl(F.mTrl),
       mnNumberOfOpt(0),
-      mTwc_gt(F.mTwc_gt) {
+      mTwc_gt(F.mTwc_gt),
+      mTcw_gt(F.mTcw_gt) {
   imgLeft = F.imgLeft.clone();
   imgRight = F.imgRight.clone();
 
@@ -219,9 +220,9 @@ void KeyFrame::SetPose(const cv::Mat &Tcw_) {
   cv::Mat tcw = Tcw.rowRange(0, 3).col(3);
   cv::Mat Rwc = Rcw.t();
   Ow = -Rwc * tcw;
-  if (!mImuCalib.Tcb.empty())
+  if (!mImuCalib.Tcb.empty()) {
     Owb = Rwc * mImuCalib.Tcb.rowRange(0, 3).col(3) + Ow;
-
+  }
   Twc = cv::Mat::eye(4, 4, Tcw.type());
   Rwc.copyTo(Twc.rowRange(0, 3).colRange(0, 3));
   Ow.copyTo(Twc.rowRange(0, 3).col(3));
@@ -251,17 +252,7 @@ cv::Mat KeyFrame::GetGroundTruthPose() {
 
 cv::Mat KeyFrame::GetGroundTruthPoseInverse() {
   unique_lock<mutex> lock(mMutexPose);
-
-  cv::Mat Rwc_gt = mTwc_gt.rowRange(0, 3).colRange(0, 3);
-  cv::Mat twc_gt = mTwc_gt.rowRange(0, 3).col(3);
-  cv::Mat Rcw_gt = Rwc_gt.t();
-  cv::Mat tcw_gt = -Rcw_gt * twc_gt;
-
-  cv::Mat Tcw_gt = cv::Mat::eye(4, 4, mTwc_gt.type());
-  Rcw_gt.copyTo(Tcw_gt.rowRange(0, 3).colRange(0, 3));
-  tcw_gt.copyTo(Tcw_gt.rowRange(0, 3).col(3));
-
-  return Tcw_gt.clone();
+  return mTcw_gt.clone();
 }
 
 cv::Mat KeyFrame::GetCameraCenter() {

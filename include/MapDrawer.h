@@ -34,7 +34,9 @@ namespace ORB_SLAM3 {
 
 class MapDrawer {
  public:
-  MapDrawer(Atlas *pAtlas, const string &strSettingPath);
+  MapDrawer(Atlas *pAtlas,
+            const string &strSettingPath,
+            const bool visualize_groundtruth_on = false);
 
   Atlas *mpAtlas;
 
@@ -44,6 +46,7 @@ class MapDrawer {
                      const bool bDrawInertialGraph);
   void DrawCurrentCamera(pangolin::OpenGlMatrix &Twc);
   void SetCurrentCameraPose(const cv::Mat &Tcw);
+  void SetCurrentCameraPose(const cv::Mat &Tcw, const cv::Mat &Tcw_gt);
   void SetReferenceKeyFrame(KeyFrame *pKF);
   void GetCurrentOpenGLCameraMatrix(pangolin::OpenGlMatrix &M,
                                     pangolin::OpenGlMatrix &MOw);
@@ -62,6 +65,9 @@ class MapDrawer {
   float mCameraLineWidth;
 
   cv::Mat mCameraPose;
+  // With regard IV-SLAM
+  cv::Mat mCameraPose_gt;
+  bool mbGTCameraPoseAvailable = false;
 
   std::mutex mMutexCamera;
 
@@ -71,6 +77,19 @@ class MapDrawer {
                                {0.6f, 0.0f, 1.0f},
                                {1.0f, 1.0f, 0.0f},
                                {0.0f, 1.0f, 1.0f}};
+
+  cv::Mat CalculateRelativeTransform(const cv::Mat &dest_frame_pose,
+                                     const cv::Mat &src_frame_pose);
+
+  cv::Mat CalculateInverseTransform(const cv::Mat &transform);
+
+  bool const cbVisualizeGroundTruthOn;
+
+  // The ground truth pose of the oldest keyframe in the ground truth pose
+  // visualization queue (This queue is of length mGTCameraPoseHistory)
+  cv::Mat mTwc_vis_init_gt;
+  // The estimated pose of the oldest keyframe in the visualization queue
+  cv::Mat mTwc_vis_init;
 };
 
 }  // namespace ORB_SLAM3
