@@ -79,8 +79,8 @@ class Tracking {
                           const cv::Mat &imRectRight,
                           const double &timestamp,
                           string filename,
-                          const bool introspection_on = false,
-                          const cv::Mat &costmap = cv::Mat());
+                          const cv::Mat &costmap = cv::Mat(),
+                          const cv::Mat &groundtruth_pose = cv::Mat());
   cv::Mat GrabImageRGBD(const cv::Mat &imRGB,
                         const cv::Mat &imD,
                         const double &timestamp,

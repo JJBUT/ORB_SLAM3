@@ -18,9 +18,9 @@
  * You should have received a copy of the GNU General Public License along with
  * ORB-SLAM3. If not, see <http://www.gnu.org/licenses/>.
  */
-
 #include "System.h"
 
+#include <glog/logging.h>
 #include <openssl/md5.h>
 #include <pangolin/pangolin.h>
 
@@ -59,13 +59,17 @@ System::System(const string &strVocFile,
                const int initFr,
                const string &strSequence,
                const string &strLoadingFile,
-               const bool introspection_on)
+               const bool introspection_on,
+               const bool generate_training_data_on,
+               const bool visualize_groundtruth_on)
     : mSensor(sensor),
       mpViewer(static_cast<Viewer *>(NULL)),
       mbReset(false),
       mbResetActiveMap(false),
       mbActivateLocalizationMode(false),
-      mbDeactivateLocalizationMode(false) {
+      mbDeactivateLocalizationMode(false),
+      cbIntrospectionOn(introspection_on),
+      cbGenerateTrainingDataOn(generate_training_data_on) {
   // Output welcome message
   cout << endl
        << "ORB-SLAM3 Copyright (C) 2017-2020 Carlos Campos, Richard Elvira, "
@@ -77,9 +81,8 @@ System::System(const string &strVocFile,
        << endl
        << "This program comes with ABSOLUTELY NO WARRANTY;" << endl
        << "This is free software, and you are welcome to redistribute it"
-       << endl
-       << "under certain conditions. See LICENSE.txt." << endl
        << endl;
+  cout << "under certain conditions. See LICENSE.txt." << endl << endl;
 
   cout << "Input sensor was set to: ";
 
@@ -93,6 +96,15 @@ System::System(const string &strVocFile,
     cout << "Monocular-Inertial" << endl;
   else if (mSensor == IMU_STEREO)
     cout << "Stereo-Inertial" << endl;
+
+  CHECK(!(cbIntrospectionOn == true && cbGenerateTrainingDataOn == true))
+      << ": You can not set both INTROSPECTION_ON and "
+         "GENERATE_TRAINING_DATA_ON to 'true' -_-";
+  CHECK(
+      !(visualize_groundtruth_on == true && cbGenerateTrainingDataOn == false))
+      << ": You can not set VISUALIZE_GROUNDTRUTH_ON to 'true' and "
+         "GENERATE_TRAINING_DATA_ON to 'false' - you need to provide the "
+         "groundtruth poses -_-";
 
   // Check settings file
   cv::FileStorage fsSettings(strSettingsFile.c_str(), cv::FileStorage::READ);
@@ -198,7 +210,8 @@ System::System(const string &strVocFile,
 
   // Create Drawers. These are used by the Viewer
   mpFrameDrawer = new FrameDrawer(mpAtlas);
-  mpMapDrawer = new MapDrawer(mpAtlas, strSettingsFile);
+  mpMapDrawer =
+      new MapDrawer(mpAtlas, strSettingsFile, visualize_groundtruth_on);
 
   // Initialize the Tracking thread
   //(it will live in the main thread of execution, the one that called this
@@ -269,7 +282,9 @@ System::System(const string &strVocFile,
                const string &strSettingsFile,
                const eSensor sensor,
                const bool bUseViewer,
-               const bool introspection_on)
+               const bool introspection_on,
+               const bool generate_training_data_on,
+               const bool visualize_groundtruth_on)
     : System(strVocFile,
              strSettingsFile,
              sensor,
@@ -277,15 +292,17 @@ System::System(const string &strVocFile,
              0,
              std::string(),
              std::string(),
-             introspection_on) {}
+             introspection_on,
+             generate_training_data_on,
+             visualize_groundtruth_on) {}
 
 cv::Mat System::TrackStereo(const cv::Mat &imLeft,
                             const cv::Mat &imRight,
                             const double &timestamp,
                             const vector<IMU::Point> &vImuMeas,
                             string filename,
-                            const bool introspection_on,
-                            const cv::Mat &costmap) {
+                            const cv::Mat &costmap,
+                            const cv::Mat &groundtruth_pose) {
   if (mSensor != STEREO && mSensor != IMU_STEREO) {
     cerr << "ERROR: you called TrackStereo but input sensor was not set to "
             "Stereo nor Stereo-Inertial."
@@ -332,11 +349,9 @@ cv::Mat System::TrackStereo(const cv::Mat &imLeft,
     for (size_t i_imu = 0; i_imu < vImuMeas.size(); i_imu++)
       mpTracker->GrabImuData(vImuMeas[i_imu]);
 
-  // std::cout << "start GrabImageStereo" << std::endl;
+  // With IV-SLAM
   cv::Mat Tcw = mpTracker->GrabImageStereo(
-      imLeft, imRight, timestamp, filename, introspection_on, costmap);
-
-  // std::cout << "out grabber" << std::endl;
+      imLeft, imRight, timestamp, filename, costmap, groundtruth_pose);
 
   unique_lock<mutex> lock2(mMutexState);
   mTrackingState = mpTracker->mState;
@@ -347,28 +362,34 @@ cv::Mat System::TrackStereo(const cv::Mat &imLeft,
 }
 
 // With introspection
-cv::Mat System::TrackStereo(const cv::Mat &imLeft,
-                            const cv::Mat &imRight,
-                            const double &timestamp,
-                            const bool introspection_on,
-                            const cv::Mat &costmap) {
-  // Handler to allow for default argument order - provide blank args to the the
-  // two middle args
-  const vector<IMU::Point> vImuMeas = vector<IMU::Point>();
-  string filename = "";
+cv::Mat System::TrackStereoIntrospection(const cv::Mat &imLeft,
+                                         const cv::Mat &imRight,
+                                         const double &timestamp,
+                                         const cv::Mat &costmap) {
+  return TrackStereo(
+      imLeft, imRight, timestamp, vector<IMU::Point>(), "", costmap);
+}
+
+// With introspection
+cv::Mat System::TrackStereoTrainingDataGeneration(
+    const cv::Mat &imLeft,
+    const cv::Mat &imRight,
+    const double &timestamp,
+    const cv::Mat &groundtruth_pose) {
   return TrackStereo(imLeft,
                      imRight,
                      timestamp,
-                     vImuMeas,
-                     filename,
-                     introspection_on,
-                     costmap);
+                     vector<IMU::Point>(),
+                     "",
+                     cv::Mat(),
+                     groundtruth_pose);
 }
 
 cv::Mat System::TrackRGBD(const cv::Mat &im,
                           const cv::Mat &depthmap,
                           const double &timestamp,
                           string filename) {
+  LOG(FATAL) << "IV-SLAM not configured for this instance";
   if (mSensor != RGBD) {
     cerr << "ERROR: you called TrackRGBD but input sensor was not set to RGBD."
          << endl;
@@ -422,6 +443,7 @@ cv::Mat System::TrackMonocular(const cv::Mat &im,
                                const double &timestamp,
                                const vector<IMU::Point> &vImuMeas,
                                string filename) {
+  LOG(FATAL) << "IV-SLAM not configured for this instance";
   if (mSensor != MONOCULAR && mSensor != IMU_MONOCULAR) {
     cerr << "ERROR: you called TrackMonocular but input sensor was not set to "
             "Monocular nor Monocular-Inertial."

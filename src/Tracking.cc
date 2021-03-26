@@ -18,9 +18,9 @@
  * You should have received a copy of the GNU General Public License along with
  * ORB-SLAM3. If not, see <http://www.gnu.org/licenses/>.
  */
-
 #include "Tracking.h"
 
+#include <glog/logging.h>
 #include <include/CameraModels/KannalaBrandt8.h>
 #include <include/CameraModels/Pinhole.h>
 #include <include/MLPnPsolver.h>
@@ -708,16 +708,27 @@ bool Tracking::ParseORBParamFile(cv::FileStorage &fSettings) {
     return false;
   }
 
-  mpORBextractorLeft = new ORBextractor(
-      nFeatures, fScaleFactor, nLevels, fIniThFAST, fMinThFAST);
+  mpORBextractorLeft = new ORBextractor(nFeatures,
+                                        fScaleFactor,
+                                        nLevels,
+                                        fIniThFAST,
+                                        fMinThFAST,
+                                        mpSystem->IntrospectionOn());
 
-  if (mSensor == System::STEREO || mSensor == System::IMU_STEREO)
-    mpORBextractorRight = new ORBextractor(
-        nFeatures, fScaleFactor, nLevels, fIniThFAST, fMinThFAST);
+  if (mSensor == System::STEREO || mSensor == System::IMU_STEREO) {
+    mpORBextractorRight = new ORBextractor(nFeatures,
+                                           fScaleFactor,
+                                           nLevels,
+                                           fIniThFAST,
+                                           fMinThFAST,
+                                           mpSystem->IntrospectionOn());
+  }
 
-  if (mSensor == System::MONOCULAR || mSensor == System::IMU_MONOCULAR)
+  if (mSensor == System::MONOCULAR || mSensor == System::IMU_MONOCULAR) {
+    LOG(FATAL) << "IV-SLAM not configured for this instance";
     mpIniORBextractor = new ORBextractor(
         5 * nFeatures, fScaleFactor, nLevels, fIniThFAST, fMinThFAST);
+  }
 
   cout << endl << "ORB Extractor Parameters: " << endl;
   cout << "- Number of Features: " << nFeatures << endl;
@@ -836,8 +847,8 @@ cv::Mat Tracking::GrabImageStereo(const cv::Mat &imRectLeft,
                                   const cv::Mat &imRectRight,
                                   const double &timestamp,
                                   string filename,
-                                  const bool introspection_on,
-                                  const cv::Mat &costmap) {
+                                  const cv::Mat &costmap,
+                                  const cv::Mat &groundtruth_pose) {
   mImGray = imRectLeft;
   cv::Mat imGrayRight = imRectRight;
   mImRight = imRectRight;
@@ -873,9 +884,9 @@ cv::Mat Tracking::GrabImageStereo(const cv::Mat &imRectLeft,
                           mbf,
                           mThDepth,
                           mpCamera,
-                          introspection_on,
                           costmap);
   } else if (mSensor == System::STEREO && mpCamera2) {
+    LOG(FATAL) << "IV-SLAM not configured for this instance";
     mCurrentFrame = Frame(mImGray,
                           imGrayRight,
                           timestamp,
@@ -890,6 +901,7 @@ cv::Mat Tracking::GrabImageStereo(const cv::Mat &imRectLeft,
                           mpCamera2,
                           mTlr);
   } else if (mSensor == System::IMU_STEREO && !mpCamera2) {
+    LOG(FATAL) << "IV-SLAM not configured for this instance";
     mCurrentFrame = Frame(mImGray,
                           imGrayRight,
                           timestamp,
@@ -904,6 +916,7 @@ cv::Mat Tracking::GrabImageStereo(const cv::Mat &imRectLeft,
                           &mLastFrame,
                           *mpImuCalib);
   } else if (mSensor == System::IMU_STEREO && mpCamera2) {
+    LOG(FATAL) << "IV-SLAM not configured for this instance";
     mCurrentFrame = Frame(mImGray,
                           imGrayRight,
                           timestamp,
@@ -919,6 +932,10 @@ cv::Mat Tracking::GrabImageStereo(const cv::Mat &imRectLeft,
                           mTlr,
                           &mLastFrame,
                           *mpImuCalib);
+  }
+
+  if (mpSystem->GenerateTrainingDataOn() && !groundtruth_pose.empty()) {
+    mCurrentFrame.SetGroundTruthPose(groundtruth_pose);
   }
 
   std::chrono::steady_clock::time_point t0 = std::chrono::steady_clock::now();
@@ -1664,9 +1681,9 @@ void Tracking::Track() {
       }
     }
 
-    if (!mCurrentFrame.mpReferenceKF)
+    if (!mCurrentFrame.mpReferenceKF) {
       mCurrentFrame.mpReferenceKF = mpReferenceKF;
-
+    }
     // If we have an initial estimation of the camera pose and matching. Track
     // the local map.
     if (!mbOnlyTracking) {
@@ -1747,10 +1764,19 @@ void Tracking::Track() {
       }
     }
 
-    // Update drawer and systems current pose
+    // Update drawer
     mpFrameDrawer->Update(this);
-    if (!mCurrentFrame.mTcw.empty()) {
+    if (mpSystem->GenerateTrainingDataOn() && !mCurrentFrame.mTcw_gt.empty() &&
+        !mCurrentFrame.mTcw.empty()) {
+      // Groundtruth available
       mpMapDrawer->SetCurrentCameraPose(mCurrentFrame.mTcw);
+    } else if (!mCurrentFrame.mTcw.empty()) {
+      // No grountruth available
+      mpMapDrawer->SetCurrentCameraPose(mCurrentFrame.mTcw);
+    }
+
+    // Update current pose in world frame
+    if (!mCurrentFrame.mTcw.empty()) {
       mCurrentFramePose = CalculateInverseTransform(mCurrentFrame.mTcw);
     }
 

@@ -171,7 +171,9 @@ KeyFrame::KeyFrame(Frame &F, Map *pMap, KeyFrameDatabase *pKFDB)
       NLeft(F.Nleft),
       NRight(F.Nright),
       mTrl(F.mTrl),
-      mnNumberOfOpt(0) {
+      mnNumberOfOpt(0),
+      mTwc_gt(F.mTwc_gt),
+      mTcw_gt(F.mTcw_gt) {
   imgLeft = F.imgLeft.clone();
   imgRight = F.imgRight.clone();
 
@@ -218,9 +220,9 @@ void KeyFrame::SetPose(const cv::Mat &Tcw_) {
   cv::Mat tcw = Tcw.rowRange(0, 3).col(3);
   cv::Mat Rwc = Rcw.t();
   Ow = -Rwc * tcw;
-  if (!mImuCalib.Tcb.empty())
+  if (!mImuCalib.Tcb.empty()) {
     Owb = Rwc * mImuCalib.Tcb.rowRange(0, 3).col(3) + Ow;
-
+  }
   Twc = cv::Mat::eye(4, 4, Tcw.type());
   Rwc.copyTo(Twc.rowRange(0, 3).colRange(0, 3));
   Ow.copyTo(Twc.rowRange(0, 3).col(3));
@@ -241,6 +243,16 @@ cv::Mat KeyFrame::GetPose() {
 cv::Mat KeyFrame::GetPoseInverse() {
   unique_lock<mutex> lock(mMutexPose);
   return Twc.clone();
+}
+
+cv::Mat KeyFrame::GetGroundTruthPose() {
+  unique_lock<mutex> lock(mMutexPose);
+  return mTwc_gt.clone();
+}
+
+cv::Mat KeyFrame::GetGroundTruthPoseInverse() {
+  unique_lock<mutex> lock(mMutexPose);
+  return mTcw_gt.clone();
 }
 
 cv::Mat KeyFrame::GetCameraCenter() {
@@ -668,8 +680,8 @@ void KeyFrame::SetBadFlag() {
     }
     if (!mpParent) {
       // cout << "KF.BADFLAG-> There is not parent, but it is not the first KF
-      // in the map" << endl; cout << "KF.BADFLAG-> KF: " << mnId << "; first KF:
-      // " << mpMap->GetInitKFid() << endl;
+      // in the map" << endl; cout << "KF.BADFLAG-> KF: " << mnId << "; first
+      // KF: " << mpMap->GetInitKFid() << endl;
     }
   }
   // std::cout << "KF.BADFLAG-> Erasing KF..." << std::endl;

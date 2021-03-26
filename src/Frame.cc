@@ -142,7 +142,6 @@ Frame::Frame(const cv::Mat &imLeft,
              GeometricCamera *pCamera,
              Frame *pPrevF,
              const IMU::Calib &ImuCalib,
-             const bool introspection_on,
              const cv::Mat &costmap)
     : mpcpi(NULL),
       mpORBvocabulary(voc),
@@ -180,24 +179,13 @@ Frame::Frame(const cv::Mat &imLeft,
   std::chrono::steady_clock::time_point time_StartExtORB =
       std::chrono::steady_clock::now();
 #endif
-  if (introspection_on) {
+  if (extractorLeft->IntrospectionOn() /*or could be extractorRight*/ &&
+      !costmap.empty()) {
     // With introspection
-    thread threadLeft(&Frame::ExtractORBIntrospectively,
-                      this,
-                      0,
-                      imLeft,
-                      0,
-                      0,
-                      introspection_on,
-                      costmap);
-    thread threadRight(&Frame::ExtractORBIntrospectively,
-                       this,
-                       1,
-                       imRight,
-                       0,
-                       0,
-                       introspection_on,
-                       costmap);
+    thread threadLeft(
+        &Frame::ExtractORBIntrospectively, this, 0, imLeft, 0, 0, costmap);
+    thread threadRight(
+        &Frame::ExtractORBIntrospectively, this, 1, imRight, 0, 0, costmap);
     threadLeft.join();
     threadRight.join();
   } else {
@@ -222,7 +210,8 @@ Frame::Frame(const cv::Mat &imLeft,
   }
 
   // Initialize keypoint quality scores
-  if (introspection_on && !costmap.empty()) {
+  if (extractorLeft->IntrospectionOn() /*or could be extractorRight*/
+      && !costmap.empty()) {
     // Point quality is determined via introspection
     for (int i = 0; i < N; i++) {
       int px = static_cast<int>(std::round(mvKeys[i].pt.x));
@@ -320,7 +309,6 @@ Frame::Frame(const cv::Mat &imLeft,
              const float &bf,
              const float &thDepth,
              GeometricCamera *pCamera,
-             const bool introspection_on,
              const cv::Mat &costmap)
     : Frame(imLeft,
             imRight,
@@ -335,7 +323,6 @@ Frame::Frame(const cv::Mat &imLeft,
             pCamera,
             static_cast<Frame *>(NULL),
             IMU::Calib(),
-            introspection_on,
             costmap) {}
 
 Frame::Frame(const cv::Mat &imGray,
@@ -617,19 +604,15 @@ void Frame::ExtractORBIntrospectively(int flag,
                                       const cv::Mat &im,
                                       const int x0,
                                       const int x1,
-                                      const bool introspection_on,
                                       const cv::Mat &costmap) {
   vector<int> vLapping = {x0, x1};
-  if (flag == 0)
-    monoLeft = (*mpORBextractorLeft)(
-        im, costmap, mvKeys, mDescriptors, vLapping, introspection_on);
-  else
-    monoRight = (*mpORBextractorRight)(im,
-                                       costmap,
-                                       mvKeysRight,
-                                       mDescriptorsRight,
-                                       vLapping,
-                                       introspection_on);
+  if (flag == 0) {
+    monoLeft =
+        (*mpORBextractorLeft)(im, costmap, mvKeys, mDescriptors, vLapping);
+  } else {
+    monoRight = (*mpORBextractorRight)(
+        im, costmap, mvKeysRight, mDescriptorsRight, vLapping);
+  }
 }
 
 void Frame::SetPose(cv::Mat Tcw) {
@@ -638,6 +621,21 @@ void Frame::SetPose(cv::Mat Tcw) {
 }
 
 void Frame::GetPose(cv::Mat &Tcw) { Tcw = mTcw.clone(); }
+
+// With regards IV-SLAM
+void Frame::SetGroundTruthPose(cv::Mat Twc_gt) {
+  mTwc_gt = Twc_gt.clone();
+
+  // Invert Twc
+  cv::Mat Rwc_gt = mTwc_gt.rowRange(0, 3).colRange(0, 3);
+  cv::Mat twc_gt = mTwc_gt.rowRange(0, 3).col(3);
+  cv::Mat Rcw_gt = Rwc_gt.t();
+  cv::Mat tcw_gt = -Rcw_gt * twc_gt;
+
+  mTcw_gt = cv::Mat::eye(4, 4, mTwc_gt.type());
+  Rcw_gt.copyTo(mTcw_gt.rowRange(0, 3).colRange(0, 3));
+  tcw_gt.copyTo(mTcw_gt.rowRange(0, 3).col(3));
+}
 
 void Frame::SetNewBias(const IMU::Bias &b) {
   mImuBias = b;

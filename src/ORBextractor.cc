@@ -408,12 +408,14 @@ ORBextractor::ORBextractor(int _nfeatures,
                            float _scaleFactor,
                            int _nlevels,
                            int _iniThFAST,
-                           int _minThFAST)
+                           int _minThFAST,
+                           const bool introspection_on)
     : nfeatures(_nfeatures),
       scaleFactor(_scaleFactor),
       nlevels(_nlevels),
       iniThFAST(_iniThFAST),
-      minThFAST(_minThFAST) {
+      minThFAST(_minThFAST),
+      cbIntrospectionOn(introspection_on) {
   mvScaleFactor.resize(nlevels);
   mvLevelSigma2.resize(nlevels);
   mvScaleFactor[0] = 1.0f;
@@ -1102,15 +1104,14 @@ int ORBextractor::operator()(InputArray _image,
                              InputArray _mask,
                              vector<KeyPoint>& _keypoints,
                              OutputArray _descriptors,
-                             std::vector<int>& vLappingArea,
-                             const bool introspection_on) {
+                             std::vector<int>& vLappingArea) {
   // cout << "[ORBextractor]: Max Features: " << nfeatures << endl;
   if (_image.empty()) {
     return -1;
   }
 
   Mat quality_score_img;
-  if (!_mask.empty() && introspection_on) {
+  if (!_mask.empty() && cbIntrospectionOn) {
     assert(_mask.type() == CV_8UC1);
     quality_score_img = _mask.getMat();
     ComputePyramid(quality_score_img, &mvCostmapPyramid);

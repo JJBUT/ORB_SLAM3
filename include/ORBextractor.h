@@ -51,7 +51,8 @@ class ORBextractor {
                float scaleFactor,
                int nlevels,
                int iniThFAST,
-               int minThFAST);
+               int minThFAST,
+               const bool introspection_on = false);
 
   ~ORBextractor() {}
 
@@ -63,8 +64,7 @@ class ORBextractor {
                  cv::InputArray _mask,
                  std::vector<cv::KeyPoint> &_keypoints,
                  cv::OutputArray _descriptors,
-                 std::vector<int> &vLappingArea,
-                 const bool introspection_on = false);
+                 std::vector<int> &vLappingArea);
 
   int inline GetLevels() { return nlevels; }
 
@@ -84,6 +84,9 @@ class ORBextractor {
 
   std::vector<cv::Mat> mvImagePyramid;
   std::vector<cv::Mat> mvCostmapPyramid;
+
+  // With introspection
+  bool IntrospectionOn() const { return cbIntrospectionOn; }
 
  protected:
   void ComputePyramid(cv::Mat image, std::vector<cv::Mat> *pyramid) const;
@@ -120,6 +123,9 @@ class ORBextractor {
   std::vector<float> mvInvScaleFactor;
   std::vector<float> mvLevelSigma2;
   std::vector<float> mvInvLevelSigma2;
+
+ private:
+  bool const cbIntrospectionOn;
 };
 
 }  // namespace ORB_SLAM3

@@ -41,6 +41,9 @@ DEFINE_string(path_to_settings, "", "Absolute path to the settings.");
 DEFINE_string(path_to_sequences,
               "",
               "Absolute path to the stereo image sequences.");
+DEFINE_string(path_to_output_training_data,
+              "",
+              "Path to write the training data to.");
 DEFINE_string(path_to_introspection_model,
               "",
               "Absolute path to the introspection model");
@@ -48,15 +51,32 @@ DEFINE_string(path_to_introspection_model,
 DEFINE_bool(introspection_on,
             false,
             "Run ORB-SLAM3 with the introspection function - GPU suggested.");
+DEFINE_bool(generate_training_data_on,
+            false,
+            "Given an image sequence and ground truth posese generate training "
+            "data for the intropsection model ");
+DEFINE_bool(
+    visualize_groundtruth_on,
+    false,
+    "Visualize the ground truth keyframe and camera poses - relative to some "
+    "buffer - not in an absolute sense because drift makes it meaningless");
 DEFINE_bool(gpu_available, false, "Set to true if a GPU is available to use.");
 DEFINE_bool(viewer_on, true, "Enable image and keyframe viewer.");
+DEFINE_bool(undistort_rectify_on,
+            false,
+            "Undistort and/or rectify images. If this is set to true both the "
+            "distortion and rectification calibration must be set. If you set "
+            "the parameters to zero then it will not perfrom that respective "
+            "correction (i.e. undistort or rectify)");
 
 using namespace std;
 
 void LoadImages(const string &strPathToSequence,
+                const bool generate_training_data_on,
                 vector<string> &vstrImageLeft,
                 vector<string> &vstrImageRight,
-                vector<double> &vTimestamps);
+                vector<double> &vTimestamps,
+                vector<cv::Mat> &vGroundTruthPoses);
 
 int main(int argc, char **argv) {
   gflags::ParseCommandLineNonHelpFlags(&argc, &argv, true);
@@ -82,14 +102,72 @@ int main(int argc, char **argv) {
     }
   }
 
+  // Generate undistortion and/or rectification maps if requested
+  cv::Mat M1l, M2l, M1r, M2r;
+  if (FLAGS_undistort_rectify_on) {
+    // Load settings related to stereo calibration
+    cv::FileStorage fsSettings(FLAGS_path_to_settings, cv::FileStorage::READ);
+    if (!fsSettings.isOpened()) {
+      cerr << "ERROR: Wrong path to settings" << endl;
+      return -1;
+    }
+
+    cv::Mat K_l, K_r, P_l, P_r, R_l, R_r, D_l, D_r;
+    fsSettings["LEFT.K"] >> K_l;
+    fsSettings["RIGHT.K"] >> K_r;
+
+    fsSettings["LEFT.P"] >> P_l;
+    fsSettings["RIGHT.P"] >> P_r;
+
+    fsSettings["LEFT.R"] >> R_l;
+    fsSettings["RIGHT.R"] >> R_r;
+
+    fsSettings["LEFT.D"] >> D_l;
+    fsSettings["RIGHT.D"] >> D_r;
+
+    int rows_l = fsSettings["LEFT.height"];
+    int cols_l = fsSettings["LEFT.width"];
+    int rows_r = fsSettings["RIGHT.height"];
+    int cols_r = fsSettings["RIGHT.width"];
+
+    if (K_l.empty() || K_r.empty() || P_l.empty() || P_r.empty() ||
+        R_l.empty() || R_r.empty() || D_l.empty() || D_r.empty() ||
+        rows_l == 0 || rows_r == 0 || cols_l == 0 || cols_r == 0) {
+      cerr << "ERROR: Calibration parameters to rectify stereo are missing!"
+           << endl;
+      return -1;
+    }
+
+    cv::initUndistortRectifyMap(K_l,
+                                D_l,
+                                R_l,
+                                P_l.rowRange(0, 3).colRange(0, 3),
+                                cv::Size(cols_l, rows_l),
+                                CV_32F,
+                                M1l,
+                                M2l);
+    cv::initUndistortRectifyMap(K_r,
+                                D_r,
+                                R_r,
+                                P_r.rowRange(0, 3).colRange(0, 3),
+                                cv::Size(cols_r, rows_r),
+                                CV_32F,
+                                M1r,
+                                M2r);
+  }
+
   // Retrieve paths to images
   vector<string> vstrImageLeft;
   vector<string> vstrImageRight;
   vector<double> vTimestamps;
+  vector<cv::Mat> vGroundTruthPoses;  // Ground truth poses are only loaded if
+                                      // the generate training data flag is true
   LoadImages(string(FLAGS_path_to_sequences),
+             bool(FLAGS_generate_training_data_on),
              vstrImageLeft,
              vstrImageRight,
-             vTimestamps);
+             vTimestamps,
+             vGroundTruthPoses);
 
   const int nImages = vstrImageLeft.size();
 
@@ -99,7 +177,9 @@ int main(int argc, char **argv) {
                          FLAGS_path_to_settings,
                          ORB_SLAM3::System::STEREO,
                          FLAGS_viewer_on,
-                         FLAGS_introspection_on);
+                         FLAGS_introspection_on,
+                         FLAGS_generate_training_data_on,
+                         FLAGS_visualize_groundtruth_on);
 
   // Vector for tracking time statistics
   vector<float> vTimesTrack;
@@ -110,23 +190,31 @@ int main(int argc, char **argv) {
   cout << "Images in the sequence: " << nImages << endl << endl;
 
   // Main loop
-  cv::Mat imLeft, imRight;
+  cv::Mat imLeftOriginal, imRightOriginal;
   for (int ni = 0; ni < nImages; ni++) {
     // Read left and right images from file
-    imLeft = cv::imread(vstrImageLeft[ni], cv::IMREAD_UNCHANGED);
-    imRight = cv::imread(vstrImageRight[ni], cv::IMREAD_UNCHANGED);
+    imLeftOriginal = cv::imread(vstrImageLeft[ni], cv::IMREAD_UNCHANGED);
+    imRightOriginal = cv::imread(vstrImageRight[ni], cv::IMREAD_UNCHANGED);
     double tframe = vTimestamps[ni];
 
-    if (imLeft.empty()) {
+    if (imLeftOriginal.empty()) {
       cerr << endl
            << "Failed to load image at: " << string(vstrImageLeft[ni]) << endl;
       return 1;
     }
 
-    // TODO rectify and undistort OG images?
+    cv::Mat imLeft, imRight;
+    if (FLAGS_undistort_rectify_on) {
+      cv::remap(imLeftOriginal, imLeft, M1l, M2l, cv::INTER_LINEAR);
+      cv::remap(imRightOriginal, imRight, M1r, M2r, cv::INTER_LINEAR);
+    } else {
+      // Don't undistort/rectify
+      imLeft = imLeftOriginal;
+      imRight = imRightOriginal;
+    }
 
     // Feed image to model to create cost mask
-    cv::Mat cost_img_cv;
+    cv::Mat cost_image_cv;
     at::Tensor cost_img;
     if (FLAGS_introspection_on) {
       // Run inference on the introspection model online
@@ -153,10 +241,8 @@ int main(int argc, char **argv) {
       cost_img = (cost_img * 255.0).to(torch::kByte);
       cost_img = cost_img.to(torch::kCPU);
 
-      cost_img_cv = ORB_SLAM3::ToCvImage(cost_img);
+      cost_image_cv = ORB_SLAM3::ToCvImage(cost_img);
     }
-
-    // TODO rectify and undistort cost images?
 
 #ifdef COMPILEDWITHC11
     std::chrono::steady_clock::time_point t1 = std::chrono::steady_clock::now();
@@ -166,9 +252,11 @@ int main(int argc, char **argv) {
 #endif
 
     // Pass the images to the SLAM system
-    if (FLAGS_introspection_on) {
-      SLAM.TrackStereo(
-          imLeft, imRight, tframe, FLAGS_introspection_on, cost_img_cv);
+    if (SLAM.IntrospectionOn()) {
+      SLAM.TrackStereoIntrospection(imLeft, imRight, tframe, cost_image_cv);
+    } else if (SLAM.GenerateTrainingDataOn()) {
+      SLAM.TrackStereoTrainingDataGeneration(
+          imLeft, imRight, tframe, vGroundTruthPoses[ni]);
     } else {
       SLAM.TrackStereo(imLeft, imRight, tframe);
     }
@@ -216,9 +304,11 @@ int main(int argc, char **argv) {
 }
 
 void LoadImages(const string &strPathToSequence,
+                const bool generate_training_data_on,
                 vector<string> &vstrImageLeft,
                 vector<string> &vstrImageRight,
-                vector<double> &vTimestamps) {
+                vector<double> &vTimestamps,
+                vector<cv::Mat> &vGroundTruthPoses) {
   ifstream fTimes;
   string strPathTimeFile = strPathToSequence + "/times.txt";
   fTimes.open(strPathTimeFile.c_str());
@@ -246,5 +336,30 @@ void LoadImages(const string &strPathToSequence,
     ss << setfill('0') << setw(6) << i;
     vstrImageLeft[i] = strPrefixLeft + ss.str() + ".png";
     vstrImageRight[i] = strPrefixRight + ss.str() + ".png";
+  }
+
+  // Load ground truth relative poses
+  if (generate_training_data_on) {
+    ifstream fGroundTruthPoses;
+    string strGroundTruthPosesFile = strPathToSequence + "/poses.txt";
+    fGroundTruthPoses.open(strGroundTruthPosesFile.c_str());
+    while (!fGroundTruthPoses.eof()) {
+      string s;
+      getline(fGroundTruthPoses, s);
+      if (!s.empty()) {
+        cv::Mat camera_pose = cv::Mat::eye(4, 4, CV_32F);
+        stringstream ss(s);
+        string str_current_entry;
+
+        for (size_t i = 0; i < 12; i++) {
+          getline(ss, str_current_entry, ' ');
+          camera_pose.at<float>(floor((float)(i) / 4), i % 4) =
+              stof(str_current_entry);
+        }
+        vGroundTruthPoses.push_back(camera_pose);
+      }
+    }
+    CHECK(nTimes == vGroundTruthPoses.size())
+        << ": Each timestamp/image set does not have a matching pose :(";
   }
 }
