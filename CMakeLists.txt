@@ -8,9 +8,10 @@ ENDIF()
 MESSAGE("Build type: " ${CMAKE_BUILD_TYPE})
 
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS}  -Wall   -O3")
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -w   -O3")
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -w  -O3")
 set(CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE} -march=native")
 set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -march=native")
+
 
 # set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall -Wno-deprecated -O3 -march=native ")
 # set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -Wno-deprecated -O3 -march=native")
@@ -56,6 +57,7 @@ ${PROJECT_SOURCE_DIR}/include
 ${PROJECT_SOURCE_DIR}/include/CameraModels
 ${EIGEN3_INCLUDE_DIR}
 ${Pangolin_INCLUDE_DIRS}
+${PROJECT_SOURCE_DIR}/include/iv_slam_helpers
 )
 
 set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${PROJECT_SOURCE_DIR}/lib)
@@ -87,6 +89,9 @@ src/CameraModels/Pinhole.cpp
 src/CameraModels/KannalaBrandt8.cpp
 src/OptimizableTypes.cpp
 src/MLPnPsolver.cpp
+src/TwoViewReconstruction.cc
+src/iv_slam_helpers/feature_evaluator.cpp
+src/iv_slam_helpers/io_access.cpp
 include/System.h
 include/Tracking.h
 include/LocalMapping.h
@@ -115,7 +120,9 @@ include/CameraModels/KannalaBrandt8.h
 include/OptimizableTypes.h
 include/MLPnPsolver.h
 include/TwoViewReconstruction.h
-src/TwoViewReconstruction.cc)
+include/iv_slam_helpers/feature_evaluator.h
+include/iv_slam_helpers/io_access.h
+)
 
 add_subdirectory(Thirdparty/g2o)
 
@@ -126,6 +133,9 @@ ${Pangolin_LIBRARIES}
 ${PROJECT_SOURCE_DIR}/Thirdparty/DBoW2/lib/libDBoW2.so
 ${PROJECT_SOURCE_DIR}/Thirdparty/g2o/lib/libg2o.so
 -lboost_serialization
+boost_system 
+-lboost_filesystem
+-ljsoncpp
 -lcrypto
 gflags
 glog
