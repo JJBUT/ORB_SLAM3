@@ -658,4 +658,9 @@ void MapPoint::PostLoad(map<long unsigned int, KeyFrame*>& mpKFid,
   mBackupObservationsId2.clear();
 }
 
+void MapPoint::SetQualityScore(float score) {
+  mfQualityScore = score;
+  mbQualityScoreCalculated = true;
+}
+
 }  // namespace ORB_SLAM3

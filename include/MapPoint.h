@@ -179,6 +179,9 @@ class MapPoint {
   void PostLoad(map<long unsigned int, KeyFrame*>& mpKFid,
                 map<long unsigned int, MapPoint*>& mpMPid);
 
+  // With regards IV-SLAM
+  void SetQualityScore(float score);
+
  public:
   long unsigned int mnId;
   static long unsigned int nNextId;
@@ -225,6 +228,10 @@ class MapPoint {
 
   unsigned int mnOriginMapId;
 
+  // With regards to IV-SLAM
+  // True if quality score has been set
+  bool mbQualityScoreCalculated = false;
+
  protected:
   // Position in absolute coordinates
   cv::Mat mWorldPos;
@@ -264,6 +271,9 @@ class MapPoint {
   std::mutex mMutexPos;
   std::mutex mMutexFeatures;
   std::mutex mMutexMap;
+
+  // With regards IV-SLAM
+  float mfQualityScore = 0.0;
 };
 
 }  // namespace ORB_SLAM3
