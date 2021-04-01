@@ -1819,8 +1819,19 @@ void Tracking::Track() {
               ? feature_evaluation::Reliability::Reliable
               : feature_evaluation::Reliability::Unreliable;
 
-      // If reliable save to disk
+      // If reliable save heatmap and masl to disk
       if (reliability == feature_evaluation::Reliability::Reliable) {
+        if (!mDatasetCreator) {
+          mDatasetCreator = new feature_evaluation::DatasetCreator(
+              "/home/administrator/Desktop");
+        }
+
+        // Save heatmap
+        mDatasetCreator->SaveBadRegionHeatmap("hahahha.png",
+                                              bad_region_heatmap);
+        // Save mask
+        mDatasetCreator->SaveBadRegionHeatmapMask("hahahha_mask.png",
+                                                  bad_region_heatmap_mask);
       }
     }
 
@@ -4002,6 +4013,16 @@ void Tracking::CalcRelativePoseError(cv::Mat &pose_est_0,
 cv::Mat Tracking::CalculateRelativeTransform(const cv::Mat &dest_frame_pose,
                                              const cv::Mat &src_frame_pose) {
   return CalculateInverseTransform(dest_frame_pose) * src_frame_pose;
+}
+
+void Tracking::SaveHeatmapImageNames() {
+  if (mDatasetCreator) {
+    mDatasetCreator->SaveToFile();
+  } else {
+    LOG(FATAL)
+        << "Asked to save heatmap image names but couldn't :( - you probably "
+           "ended the program before any training data was needed to be saved";
+  }
 }
 
 }  // namespace ORB_SLAM3

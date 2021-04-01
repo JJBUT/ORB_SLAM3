@@ -44,6 +44,7 @@
 #include "ORBextractor.h"
 #include "System.h"
 #include "Viewer.h"
+#include "dataset_creator.h"
 
 namespace ORB_SLAM3 {
 
@@ -378,8 +379,15 @@ class Tracking {
  public:
   cv::Mat mImRight;
 
+  // With regards to IV-SLAM
   bool IntrospectionOn() const;
   bool GenerateTrainingDataOn() const;
+  void SaveHeatmapImageNames();
+
+ private:
+  // Dataset creator saves information extracted by feature evaluator to
+  // file in the format expected by the introspection network trainer.
+  feature_evaluation::DatasetCreator *mDatasetCreator = NULL;
 };
 
 }  // namespace ORB_SLAM3

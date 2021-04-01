@@ -539,6 +539,11 @@ void System::ResetActiveMap() {
 }
 
 void System::Shutdown() {
+  // With regards IV-SLAM - save the names of the heatmap/mask images to a json
+  // file
+  if (cbGenerateTrainingDataOn) {
+    mpTracker->SaveHeatmapImageNames();
+  }
   mpLocalMapper->RequestFinish();
   mpLoopCloser->RequestFinish();
   if (mpViewer) {
