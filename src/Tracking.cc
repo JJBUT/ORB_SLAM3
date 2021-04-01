@@ -1764,12 +1764,18 @@ void Tracking::Track() {
       }
     }
 
-    // Update drawer
+    // Must be done before viewer update is called so we can visualize the
+    // keypoint quality score if we are training
+    if (mpSystem->GenerateTrainingDataOn()) {
+      mCurrentFrame.ComputeKeyPtQualScores();
+    }
+
+    // Update drawer of camera pose - not keyframes -_=
     mpFrameDrawer->Update(this);
     if (mpSystem->GenerateTrainingDataOn() && !mCurrentFrame.mTcw_gt.empty() &&
         !mCurrentFrame.mTcw.empty()) {
-      // Groundtruth available
-      mpMapDrawer->SetCurrentCameraPose(mCurrentFrame.mTcw);
+      mpMapDrawer->SetCurrentCameraPose(mCurrentFrame.mTcw,
+                                        mCurrentFrame.mTcw_gt);
     } else if (!mCurrentFrame.mTcw.empty()) {
       // No grountruth available
       mpMapDrawer->SetCurrentCameraPose(mCurrentFrame.mTcw);
@@ -1779,6 +1785,13 @@ void Tracking::Track() {
     if (!mCurrentFrame.mTcw.empty()) {
       mCurrentFramePose = CalculateInverseTransform(mCurrentFrame.mTcw);
     }
+
+    // Training data generation magic
+
+    // static int counter = 0;
+    // counter++;
+    // if (mpSystem->GenerateTrainingDataOn() && mState == OK && counter > 2) {
+    // }
 
     if (bOK || mState == RECENTLY_LOST) {
       // Update motion model
@@ -1835,11 +1848,11 @@ void Tracking::Track() {
                                mSensor == System::IMU_STEREO))))
         CreateNewKeyFrame();
 
-      // We allow points with high innovation (considererd outliers by the Huber
-      // Function) pass to the new keyframe, so that bundle adjustment will
-      // finally decide if they are outliers or not. We don't want next frame to
-      // estimate its position with those points so we discard them in the
-      // frame. Only has effect if lastframe is tracked
+      // We allow points with high innovation (considererd outliers by the
+      // Huber Function) pass to the new keyframe, so that bundle adjustment
+      // will finally decide if they are outliers or not. We don't want next
+      // frame to estimate its position with those points so we discard them
+      // in the frame. Only has effect if lastframe is tracked
       for (int i = 0; i < mCurrentFrame.N; i++) {
         if (mCurrentFrame.mvpMapPoints[i] && mCurrentFrame.mvbOutlier[i])
           mCurrentFrame.mvpMapPoints[i] = static_cast<MapPoint *>(NULL);
@@ -2297,6 +2310,9 @@ bool Tracking::TrackReferenceKeyFrame() {
   // endl;
   Optimizer::PoseOptimization(&mCurrentFrame);
 
+  if (mpSystem->GenerateTrainingDataOn()) {
+    mCurrentFrame.BackupNewMapPoints();
+  }
   // Discard outliers
   int nmatchesMap = 0;
   for (int i = 0; i < mCurrentFrame.N; i++) {
@@ -2448,6 +2464,11 @@ bool Tracking::TrackWithMotionModel() {
   // Optimize frame pose with all matches
   Optimizer::PoseOptimization(&mCurrentFrame);
 
+  // With regards IV-SLAM
+  if (mpSystem->GenerateTrainingDataOn()) {
+    mCurrentFrame.BackupNewMapPoints();
+  }
+
   // Discard outliers
   int nmatchesMap = 0;
   for (int i = 0; i < mCurrentFrame.N; i++) {
@@ -2521,6 +2542,10 @@ bool Tracking::TrackLocalMap() {
                               // !mpLastKeyFrame->GetMap()->GetIniertialBA1());
       }
     }
+  }
+
+  if (mpSystem->GenerateTrainingDataOn()) {
+    mCurrentFrame.BackupNewMapPoints();
   }
 
   aux1 = 0, aux2 = 0;
@@ -3758,6 +3783,11 @@ cv::Mat Tracking::CalculateInverseTransform(const cv::Mat &transform) {
   t1_inv.copyTo(transform_inv.rowRange(0, 3).col(3));
 
   return transform_inv;
+}
+
+bool Tracking::IntrospectionOn() const { return mpSystem->IntrospectionOn(); }
+bool Tracking::GenerateTrainingDataOn() const {
+  return mpSystem->GenerateTrainingDataOn();
 }
 
 }  // namespace ORB_SLAM3

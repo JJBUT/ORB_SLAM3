@@ -104,7 +104,15 @@ System::System(const string &strVocFile,
       !(visualize_groundtruth_on == true && cbGenerateTrainingDataOn == false))
       << ": You can not set VISUALIZE_GROUNDTRUTH_ON to 'true' and "
          "GENERATE_TRAINING_DATA_ON to 'false' - you need to provide the "
-         "groundtruth poses -_-";
+         "groundtruth poses and you can only do that what you are generating "
+         "training data -_-";
+
+  cout << endl;
+  cout << "____IV-SLAM System Factors____" << endl;
+  cout << "introspection_on: " << introspection_on << endl;
+  cout << "generate_training_data_on: " << generate_training_data_on << endl;
+  cout << "visualize_groundtruth_on: " << visualize_groundtruth_on << endl;
+  cout << endl;
 
   // Check settings file
   cv::FileStorage fsSettings(strSettingsFile.c_str(), cv::FileStorage::READ);

@@ -18,12 +18,13 @@
  * You should have received a copy of the GNU General Public License along with
  * ORB-SLAM3. If not, see <http://www.gnu.org/licenses/>.
  */
-
 #include "Frame.h"
 
+#include <glog/logging.h>
 #include <include/CameraModels/KannalaBrandt8.h>
 #include <include/CameraModels/Pinhole.h>
 
+#include <boost/math/distributions.hpp>
 #include <thread>
 
 #include "Converter.h"
@@ -112,7 +113,11 @@ Frame::Frame(const Frame &frame)
       mtlr(frame.mtlr.clone()),
       mTrl(frame.mTrl.clone()),
       mTimeStereoMatch(frame.mTimeStereoMatch),
-      mTimeORB_Ext(frame.mTimeORB_Ext) {
+      mTimeORB_Ext(frame.mTimeORB_Ext),
+      mvChi2Dof(frame.mvChi2Dof),
+      mvChi2(frame.mvChi2),
+      mvKeyQualScoreTrain(frame.mvKeyQualScoreTrain),
+      mvpMapPointsComp(frame.mvpMapPointsComp) {
   for (int i = 0; i < FRAME_GRID_COLS; i++)
     for (int j = 0; j < FRAME_GRID_ROWS; j++) {
       mGrid[i][j] = frame.mGrid[i][j];
@@ -121,7 +126,12 @@ Frame::Frame(const Frame &frame)
       }
     }
 
-  if (!frame.mTcw.empty()) SetPose(frame.mTcw);
+  if (!frame.mTcw.empty()) {
+    SetPose(frame.mTcw);
+  }
+  if (!frame.mTcw_gt.empty()) {
+    SetGroundTruthPose(frame.mTcw_gt);
+  }
 
   if (!frame.mVw.empty()) mVw = frame.mVw.clone();
 
@@ -208,6 +218,12 @@ Frame::Frame(const cv::Mat &imLeft,
   if (mvKeys.empty()) {
     return;
   }
+
+  // Things for training data generation
+  mvpMapPointsComp = vector<MapPoint *>(N, static_cast<MapPoint *>(NULL));
+  mvChi2Dof = vector<int>(N, 0);
+  mvChi2 = vector<float>(N, 0);
+  mvKeyQualScoreTrain = vector<float>(N, 1.0f);
 
   // Initialize keypoint quality scores
   if (extractorLeft->IntrospectionOn() /*or could be extractorRight*/
@@ -1482,6 +1498,70 @@ bool Frame::isInFrustumChecks(MapPoint *pMP,
 
 cv::Mat Frame::UnprojectStereoFishEye(const int &i) {
   return mRwc * mvStereo3Dpoints[i] + mOw;
+}
+
+void Frame::ComputeKeyPtQualScores() {
+  const float prob_thresh_low = 0.5;  // 0.5
+  const int min_obs = 3;
+  boost::math::chi_squared_distribution<float> dist_mono(2);
+  boost::math::chi_squared_distribution<float> dist_stereo(3);
+
+  float const vslam_keypt_qual_chi2_prob_thresh = 0.99;
+
+  float thresh_high_mono =
+      quantile(dist_mono, vslam_keypt_qual_chi2_prob_thresh);
+  float thresh_high_stereo =
+      quantile(dist_stereo, vslam_keypt_qual_chi2_prob_thresh);
+  float thresh_low_mono = quantile(dist_mono, prob_thresh_low);
+  float thresh_low_stereo = quantile(dist_stereo, prob_thresh_low);
+
+  for (size_t i = 0; i < mvChi2Dof.size(); i++) {
+    cout << "mvChi2Dof[i]: " << mvChi2Dof[i] << endl;
+    if (mvChi2Dof[i] > 0) {
+      cout << "HERE-2" << endl;
+      if (!mvpMapPointsComp[i]) {
+        LOG(FATAL) << "Map point not available";
+      }
+      cout << "HERE-1" << endl;
+      float thresh_min, thresh_max;
+      if (mvChi2Dof[i] == 2) {
+        thresh_min = thresh_low_mono;
+        thresh_max = thresh_high_mono;
+      } else if (mvChi2Dof[i] == 3) {
+        thresh_min = thresh_low_stereo;
+        thresh_max = thresh_high_stereo;
+      } else {
+        LOG(FATAL) << "Unexpected Chi2DOF " << mvChi2Dof[i];
+      }
+      cout << "HERE" << endl;
+      float chi2 = mvChi2[i];
+      float scaled_err = (chi2 - thresh_min) / (thresh_max - thresh_min);
+      scaled_err = (scaled_err > 1.0) ? 1.0 : scaled_err;
+      scaled_err = (scaled_err < 0.0) ? 0.0 : scaled_err;
+      cout << "HERE2" << endl;
+      float qual_score = 1.0 / (1.0 + static_cast<float>(scaled_err));
+      float qual_score_norm = 2 * qual_score - 1;
+      mvKeyQualScoreTrain[i] = qual_score_norm;
+      cout << "qual_score_norm" << qual_score_norm << endl;
+      mvpMapPointsComp[i]->SetQualityScore(qual_score_norm);
+
+      // Prune out points that have a short track length and have been
+      // estimated to have good quality
+      if (mvpMapPointsComp[i]->GetFound() < min_obs && qual_score_norm > 0.5) {
+        mvChi2Dof[i] = 0;
+        continue;
+      }
+    }
+  }
+}
+
+// With regards IV-SLAM
+void Frame::BackupNewMapPoints() {
+  for (size_t i = 0; i < mvChi2Dof.size(); i++) {
+    if (mvChi2Dof[i] > 0 && !mvpMapPointsComp[i]) {
+      mvpMapPointsComp[i] = mvpMapPoints[i];
+    }
+  }
 }
 
 }  // namespace ORB_SLAM3

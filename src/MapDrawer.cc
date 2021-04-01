@@ -220,14 +220,11 @@ void MapDrawer::DrawKeyFrames(const bool bDrawKF,
       int const history_length = 5;
       size_t st_idx =
           std::max(0, static_cast<int>(vpKFs.size()) - history_length);
-      cout << "KF Count: " << vpKFs.size() << " st_idx " << st_idx << endl;
       for (size_t i = st_idx; i < vpKFs.size(); i++) {
         KeyFrame *pKF = vpKFs[i];
         if (!pKF->GetGroundTruthPose().empty()) {
           cv::Mat Twc_gt = pKF->GetGroundTruthPose();
-          cout << "New gt KF" << endl;
           if (i == st_idx) {
-            cout << "Initialized origin" << endl;
             mTwc_vis_init_gt = Twc_gt;
             mTwc_vis_init = pKF->GetPoseInverse();
           }
@@ -352,7 +349,7 @@ void MapDrawer::DrawKeyFrames(const bool bDrawKF,
     glEnd();
   }
 
-  // Drawing all maps is confusing
+  // Drawing all maps is confusing - Jack
   /*
   vector<Map *> vpMaps = mpAtlas->GetAllMaps();
 

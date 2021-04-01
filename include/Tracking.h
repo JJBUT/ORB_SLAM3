@@ -361,6 +361,9 @@ class Tracking {
 
  public:
   cv::Mat mImRight;
+
+  bool IntrospectionOn() const;
+  bool GenerateTrainingDataOn() const;
 };
 
 }  // namespace ORB_SLAM3
