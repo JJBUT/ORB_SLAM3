@@ -1033,7 +1033,8 @@ int Optimizer::PoseOptimization(Frame* pFrame) {
   const int its[4] = {10, 10, 10, 10};
 
   int nBad = 0;
-  for (size_t it = 0; it < 4; it++) {
+  size_t optimization_num = 4;
+  for (size_t it = 0; it < optimization_num; it++) {
     vSE3->setEstimate(Converter::toSE3Quat(pFrame->mTcw));
     optimizer.initializeOptimization(0);
     optimizer.optimize(its[it]);
@@ -1060,6 +1061,12 @@ int Optimizer::PoseOptimization(Frame* pFrame) {
       }
 
       if (it == 2) e->setRobustKernel(0);
+
+      // With regards IV-SLAM
+      if (true && (it == (optimization_num - 1))) {
+        pFrame->mvChi2[idx] = chi2;
+        pFrame->mvChi2Dof[idx] = 2;
+      }
     }
 
     for (size_t i = 0, iend = vpEdgesMono_FHR.size(); i < iend; i++) {
@@ -1083,6 +1090,12 @@ int Optimizer::PoseOptimization(Frame* pFrame) {
       }
 
       if (it == 2) e->setRobustKernel(0);
+
+      // With regards IV-SLAM
+      if (true && (it == (optimization_num - 1))) {
+        pFrame->mvChi2[idx] = chi2;
+        pFrame->mvChi2Dof[idx] = 2;
+      }
     }
 
     for (size_t i = 0, iend = vpEdgesStereo.size(); i < iend; i++) {
@@ -1106,6 +1119,12 @@ int Optimizer::PoseOptimization(Frame* pFrame) {
       }
 
       if (it == 2) e->setRobustKernel(0);
+
+      // With regards IV-SLAM
+      if (true && (it == (optimization_num - 1))) {
+        pFrame->mvChi2[idx] = chi2;
+        pFrame->mvChi2Dof[idx] = 3;
+      }
     }
 
     if (optimizer.edges().size() < 10) break;
@@ -6774,8 +6793,8 @@ void Optimizer::LocalBundleAdjustment(KeyFrame* pMainKF,
           int index = get<0>(vpMonoMPsOpt[i]->GetIndexInKeyFrame(pKFi));
           if (index < 0) {
             // cout << "LBA ERROR: KF has a monocular observation which is not
-            // recognized by the MP" << endl; cout << "LBA: KF " << pKFi->mnId <<
-            // " and MP " << vpMonoMPsOpt[i]->mnId << " with index " << endl;
+            // recognized by the MP" << endl; cout << "LBA: KF " << pKFi->mnId
+            // << " and MP " << vpMonoMPsOpt[i]->mnId << " with index " << endl;
             continue;
           }
 
@@ -6793,7 +6812,8 @@ void Optimizer::LocalBundleAdjustment(KeyFrame* pMainKF,
           int index = get<0>(vpStereoMPsOpt[i]->GetIndexInKeyFrame(pKFi));
           if (index < 0) {
             // cout << "LBA: KF has a stereo observation which is not recognized
-            // by the MP" << endl; cout << "LBA: KF " << pKFi->mnId << " and MP "
+            // by the MP" << endl; cout << "LBA: KF " << pKFi->mnId << " and MP
+            // "
             // << vpStereoMPsOpt[i]->mnId << endl;
             continue;
           }
@@ -6812,8 +6832,8 @@ void Optimizer::LocalBundleAdjustment(KeyFrame* pMainKF,
           int index = get<0>(vpMonoMPsBad[i]->GetIndexInKeyFrame(pKFi));
           if (index < 0) {
             // cout << "LBA ERROR: KF has a monocular observation which is not
-            // recognized by the MP" << endl; cout << "LBA: KF " << pKFi->mnId <<
-            // " and MP " << vpMonoMPsOpt[i]->mnId << " with index " << endl;
+            // recognized by the MP" << endl; cout << "LBA: KF " << pKFi->mnId
+            // << " and MP " << vpMonoMPsOpt[i]->mnId << " with index " << endl;
             continue;
           }
 
@@ -6830,7 +6850,8 @@ void Optimizer::LocalBundleAdjustment(KeyFrame* pMainKF,
           int index = get<0>(vpStereoMPsBad[i]->GetIndexInKeyFrame(pKFi));
           if (index < 0) {
             // cout << "LBA: KF has a stereo observation which is not recognized
-            // by the MP" << endl; cout << "LBA: KF " << pKFi->mnId << " and MP "
+            // by the MP" << endl; cout << "LBA: KF " << pKFi->mnId << " and MP
+            // "
             // << vpStereoMPsOpt[i]->mnId << endl;
             continue;
           }
