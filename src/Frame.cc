@@ -1516,13 +1516,10 @@ void Frame::ComputeKeyPtQualScores() {
   float thresh_low_stereo = quantile(dist_stereo, prob_thresh_low);
 
   for (size_t i = 0; i < mvChi2Dof.size(); i++) {
-    cout << "mvChi2Dof[i]: " << mvChi2Dof[i] << endl;
     if (mvChi2Dof[i] > 0) {
-      cout << "HERE-2" << endl;
       if (!mvpMapPointsComp[i]) {
         LOG(FATAL) << "Map point not available";
       }
-      cout << "HERE-1" << endl;
       float thresh_min, thresh_max;
       if (mvChi2Dof[i] == 2) {
         thresh_min = thresh_low_mono;
@@ -1533,16 +1530,13 @@ void Frame::ComputeKeyPtQualScores() {
       } else {
         LOG(FATAL) << "Unexpected Chi2DOF " << mvChi2Dof[i];
       }
-      cout << "HERE" << endl;
       float chi2 = mvChi2[i];
       float scaled_err = (chi2 - thresh_min) / (thresh_max - thresh_min);
       scaled_err = (scaled_err > 1.0) ? 1.0 : scaled_err;
       scaled_err = (scaled_err < 0.0) ? 0.0 : scaled_err;
-      cout << "HERE2" << endl;
       float qual_score = 1.0 / (1.0 + static_cast<float>(scaled_err));
       float qual_score_norm = 2 * qual_score - 1;
       mvKeyQualScoreTrain[i] = qual_score_norm;
-      cout << "qual_score_norm" << qual_score_norm << endl;
       mvpMapPointsComp[i]->SetQualityScore(qual_score_norm);
 
       // Prune out points that have a short track length and have been

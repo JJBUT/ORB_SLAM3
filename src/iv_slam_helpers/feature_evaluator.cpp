@@ -37,13 +37,13 @@ using Eigen::VectorXf;
 void GenerateUnsupImageQualityHeatmapGP(ORB_SLAM3::Frame& frame,
                                         const cv::Mat img_curr,
                                         cv::Mat* bad_region_heatmap_ptr,
-                                        cv::Mat* bad_region_heatmap_maskptr) {
-  if (!bad_region_heatmap_ptr || !bad_region_heatmap_maskptr) {
+                                        cv::Mat* bad_region_heatmap_mask_ptr) {
+  if (!bad_region_heatmap_ptr || !bad_region_heatmap_mask_ptr) {
     LOG(ERROR) << "Bad ptr -_-";
     return;
   }
   cv::Mat& bad_region_heatmap = *bad_region_heatmap_ptr;
-  cv::Mat& bad_region_heatmap_mask = *bad_region_heatmap_maskptr;
+  cv::Mat& bad_region_heatmap_mask = *bad_region_heatmap_mask_ptr;
 
   // The threshold that is used to generate a binary mask from the
   // Gaussian Process estimated variance values that are normalized btw 0 and 1
@@ -223,6 +223,18 @@ cv::Mat GenerateErrHeatmap(unsigned int rows,
   memcpy(out_img.data, &pv, err_vals.size() * sizeof(err_vals[0]));
 
   return out_img;
+}
+
+bool IsHeatmapMaskAllZero(const cv::Mat& bad_region_heatmap_mask) {
+  if (bad_region_heatmap_mask.empty()) {
+    return true;
+  } else {
+    if (cv::sum(bad_region_heatmap_mask)[0] > 0) {
+      return false;
+    } else {
+      return true;
+    }
+  }
 }
 
 }  // namespace feature_evaluation

@@ -132,15 +132,16 @@ cv::Mat FrameDrawer::DrawFrame(bool bOldFeatures) {
         // Green at high quality, red at low quality
         cv::Scalar color;
         if (mbGenerateTrainingDataOn) {
-          // cout << "vCurrentKeysQualTrain[i]: " << vCurrentKeysQualTrain[i]
-          //   << endl;
+          // Color according to self supervised keypoint quality score
           color = cv::Scalar(0.0,
                              255 * vCurrentKeysQualTrain[i],
                              255 - 255 * vCurrentKeysQualTrain[i]);
         } else if (mbIntrospectionOn) {
+          // Color according to introspection model quality score
           color = cv::Scalar(
               0.0, 255 * vCurrentKeysQual[i], 255 - 255 * vCurrentKeysQual[i]);
         } else {
+          // Color just green for generic case
           color = cv::Scalar(0.0, 255, 0);
         }
         // This is a match to a MapPoint in the map

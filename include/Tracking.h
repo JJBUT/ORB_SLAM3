@@ -119,6 +119,24 @@ class Tracking {
   int GetNumberDataset();
   int GetMatchesInliers();
 
+ private:
+  // With regards to IV-SLAM
+  bool EvaluateTrackingAccuracy();
+
+  void CalcRelativePoseError(cv::Mat &pose_est_0,
+                             cv::Mat &pose_est_1,
+                             cv::Mat &pose_gt_0,
+                             cv::Mat &pose_gt_1,
+                             Eigen::AngleAxisd *aa_rot_err,
+                             Eigen::Vector3d *t_err);
+
+  // Returns the transformation from src_frame to dest_frame (takes a point from
+  // src_frame to dest_frame)
+  cv::Mat CalculateRelativeTransform(const cv::Mat &dest_frame_pose,
+                                     const cv::Mat &src_frame_pose);
+
+  cv::Mat CalculateInverseTransform(const cv::Mat &transform);
+
  public:
   // Tracking states
   enum eTrackingState {
@@ -233,8 +251,6 @@ class Tracking {
                                 float &bax,
                                 float &bay,
                                 float &baz);
-
-  cv::Mat CalculateInverseTransform(const cv::Mat &transform);
 
   bool mbMapUpdated;
 

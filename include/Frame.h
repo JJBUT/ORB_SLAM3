@@ -129,6 +129,7 @@ class Frame {
   void GetPose(cv::Mat &Tcw);
 
   void SetGroundTruthPose(cv::Mat Twc_gt);
+  void GetGroundTruthPose();
 
   // Set IMU velocity
   void SetVelocity(const cv::Mat &Vwb);
