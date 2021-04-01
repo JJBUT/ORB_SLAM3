@@ -92,6 +92,7 @@ src/MLPnPsolver.cpp
 src/TwoViewReconstruction.cc
 src/iv_slam_helpers/feature_evaluator.cpp
 src/iv_slam_helpers/io_access.cpp
+src/iv_slam_helpers/dataset_creator.cpp
 include/System.h
 include/Tracking.h
 include/LocalMapping.h
@@ -122,6 +123,7 @@ include/MLPnPsolver.h
 include/TwoViewReconstruction.h
 include/iv_slam_helpers/feature_evaluator.h
 include/iv_slam_helpers/io_access.h
+include/iv_slam_helpers/dataset_creator.h
 )
 
 add_subdirectory(Thirdparty/g2o)
