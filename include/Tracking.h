@@ -44,6 +44,7 @@
 #include "ORBextractor.h"
 #include "System.h"
 #include "Viewer.h"
+#include "dataset_creator.h"
 
 namespace ORB_SLAM3 {
 
@@ -80,7 +81,8 @@ class Tracking {
                           const double &timestamp,
                           string filename,
                           const cv::Mat &costmap = cv::Mat(),
-                          const cv::Mat &groundtruth_pose = cv::Mat());
+                          const cv::Mat &groundtruth_pose = cv::Mat(),
+                          const string image_name = "");
   cv::Mat GrabImageRGBD(const cv::Mat &imRGB,
                         const cv::Mat &imD,
                         const double &timestamp,
@@ -118,6 +120,24 @@ class Tracking {
   void NewDataset();
   int GetNumberDataset();
   int GetMatchesInliers();
+
+ private:
+  // With regards to IV-SLAM
+  bool EvaluateTrackingAccuracy();
+
+  void CalcRelativePoseError(cv::Mat &pose_est_0,
+                             cv::Mat &pose_est_1,
+                             cv::Mat &pose_gt_0,
+                             cv::Mat &pose_gt_1,
+                             Eigen::AngleAxisd *aa_rot_err,
+                             Eigen::Vector3d *t_err);
+
+  // Returns the transformation from src_frame to dest_frame (takes a point from
+  // src_frame to dest_frame)
+  cv::Mat CalculateRelativeTransform(const cv::Mat &dest_frame_pose,
+                                     const cv::Mat &src_frame_pose);
+
+  cv::Mat CalculateInverseTransform(const cv::Mat &transform);
 
  public:
   // Tracking states
@@ -233,8 +253,6 @@ class Tracking {
                                 float &bax,
                                 float &bay,
                                 float &baz);
-
-  cv::Mat CalculateInverseTransform(const cv::Mat &transform);
 
   bool mbMapUpdated;
 
@@ -361,6 +379,16 @@ class Tracking {
 
  public:
   cv::Mat mImRight;
+
+  // With regards to IV-SLAM
+  bool IntrospectionOn() const;
+  bool GenerateTrainingDataOn() const;
+  void SaveHeatmapImageNames();
+
+ private:
+  // Dataset creator saves information extracted by feature evaluator to
+  // file in the format expected by the introspection network trainer.
+  feature_evaluation::DatasetCreator *mDatasetCreator = NULL;
 };
 
 }  // namespace ORB_SLAM3

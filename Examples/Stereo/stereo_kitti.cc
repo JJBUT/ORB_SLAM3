@@ -27,6 +27,7 @@
 
 #include <algorithm>
 #include <chrono>
+#include <csignal>
 #include <fstream>
 #include <iomanip>
 #include <iostream>
@@ -69,6 +70,12 @@ DEFINE_bool(undistort_rectify_on,
             "the parameters to zero then it will not perfrom that respective "
             "correction (i.e. undistort or rectify)");
 
+// Length of the image name suffix that should be extracted from its name -
+// relevant for passsing the image name for heatmap and masks - for example if
+// the images loaded from file have a name like "0000006.png" the image name
+// suffix length is equal to 10
+const int ImageNameSuffixLength = 10;
+
 using namespace std;
 
 void LoadImages(const string &strPathToSequence,
@@ -78,8 +85,24 @@ void LoadImages(const string &strPathToSequence,
                 vector<double> &vTimestamps,
                 vector<cv::Mat> &vGroundTruthPoses);
 
+ORB_SLAM3::System *SLAM_ptr;
+
+void SignalHandler(int signal_num) {
+  cout << "Interrupt signal is (" << signal_num << ").\n";
+
+  // terminate program
+  if (SLAM_ptr) {
+    SLAM_ptr->Shutdown();
+  }
+
+  cout << "Exiting the program!" << endl;
+
+  exit(signal_num);
+}
+
 int main(int argc, char **argv) {
   gflags::ParseCommandLineNonHelpFlags(&argc, &argv, true);
+  signal(SIGINT, SignalHandler);
 
   // Load introspection model
   torch::jit::script::Module introspection_model;
@@ -173,13 +196,13 @@ int main(int argc, char **argv) {
 
   // Create SLAM system. It initializes all system threads and gets ready to
   // process frames.
-  ORB_SLAM3::System SLAM(FLAGS_path_to_vocabulary,
-                         FLAGS_path_to_settings,
-                         ORB_SLAM3::System::STEREO,
-                         FLAGS_viewer_on,
-                         FLAGS_introspection_on,
-                         FLAGS_generate_training_data_on,
-                         FLAGS_visualize_groundtruth_on);
+  SLAM_ptr = new ORB_SLAM3::System(FLAGS_path_to_vocabulary,
+                                   FLAGS_path_to_settings,
+                                   ORB_SLAM3::System::STEREO,
+                                   FLAGS_viewer_on,
+                                   FLAGS_introspection_on,
+                                   FLAGS_generate_training_data_on,
+                                   FLAGS_visualize_groundtruth_on);
 
   // Vector for tracking time statistics
   vector<float> vTimesTrack;
@@ -252,13 +275,18 @@ int main(int argc, char **argv) {
 #endif
 
     // Pass the images to the SLAM system
-    if (SLAM.IntrospectionOn()) {
-      SLAM.TrackStereoIntrospection(imLeft, imRight, tframe, cost_image_cv);
-    } else if (SLAM.GenerateTrainingDataOn()) {
-      SLAM.TrackStereoTrainingDataGeneration(
-          imLeft, imRight, tframe, vGroundTruthPoses[ni]);
+    if (SLAM_ptr->IntrospectionOn()) {
+      SLAM_ptr->TrackStereoIntrospection(
+          imLeft, imRight, tframe, cost_image_cv);
+    } else if (SLAM_ptr->GenerateTrainingDataOn()) {
+      // Name for output heatmap and mask
+      string img_name = vstrImageLeft[ni].substr(
+          vstrImageLeft[ni].length() - ImageNameSuffixLength,
+          ImageNameSuffixLength);
+      SLAM_ptr->TrackStereoTrainingDataGeneration(
+          imLeft, imRight, tframe, vGroundTruthPoses[ni], img_name);
     } else {
-      SLAM.TrackStereo(imLeft, imRight, tframe);
+      SLAM_ptr->TrackStereo(imLeft, imRight, tframe);
     }
 
 #ifdef COMPILEDWITHC11
@@ -285,7 +313,7 @@ int main(int argc, char **argv) {
   }
 
   // Stop all threads
-  SLAM.Shutdown();
+  SLAM_ptr->Shutdown();
 
   // Tracking time statistics
   sort(vTimesTrack.begin(), vTimesTrack.end());
@@ -298,7 +326,7 @@ int main(int argc, char **argv) {
   cout << "mean tracking time: " << totaltime / nImages << endl;
 
   // Save camera trajectory
-  SLAM.SaveTrajectoryKITTI("CameraTrajectory.txt");
+  SLAM_ptr->SaveTrajectoryKITTI("CameraTrajectory.txt");
 
   return 0;
 }

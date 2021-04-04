@@ -44,8 +44,10 @@ cv::Mat FrameDrawer::DrawFrame(bool bOldFeatures) {
       vMatches;  // Initialization: correspondeces with reference keypoints
   vector<cv::KeyPoint> vCurrentKeys;  // KeyPoints in current frame
   vector<float>
-      vCurrentKeysQual;      // Quality score of KeyPoints in current frame
-  vector<bool> vbVO, vbMap;  // Tracked MapPoints in current frame
+      vCurrentKeysQual;  // Quality score of KeyPoints in current frame
+  vector<float> vCurrentKeysQualTrain;  // Quality score of KeyPoints in current
+                                        // frame during training data generation
+  vector<bool> vbVO, vbMap;             // Tracked MapPoints in current frame
   vector<pair<cv::Point2f, cv::Point2f> > vTracks;
   int state;  // Tracking state
 
@@ -70,6 +72,7 @@ cv::Mat FrameDrawer::DrawFrame(bool bOldFeatures) {
     mIm.copyTo(im);
 
     vCurrentKeysQual = mvCurrentKeysQualScore;
+    vCurrentKeysQualTrain = mvCurrentKeysQualScoreTrain;
 
     if (mState == Tracking::NOT_INITIALIZED) {
       vCurrentKeys = mvCurrentKeys;
@@ -127,9 +130,20 @@ cv::Mat FrameDrawer::DrawFrame(bool bOldFeatures) {
         pt2.y = vCurrentKeys[i].pt.y + r;
 
         // Green at high quality, red at low quality
-        cv::Scalar color = cv::Scalar(
-            0.0, 255 * vCurrentKeysQual[i], 255 - 255 * vCurrentKeysQual[i]);
-
+        cv::Scalar color;
+        if (mbGenerateTrainingDataOn) {
+          // Color according to self supervised keypoint quality score
+          color = cv::Scalar(0.0,
+                             255 * vCurrentKeysQualTrain[i],
+                             255 - 255 * vCurrentKeysQualTrain[i]);
+        } else if (mbIntrospectionOn) {
+          // Color according to introspection model quality score
+          color = cv::Scalar(
+              0.0, 255 * vCurrentKeysQual[i], 255 - 255 * vCurrentKeysQual[i]);
+        } else {
+          // Color just green for generic case
+          color = cv::Scalar(0.0, 255, 0);
+        }
         // This is a match to a MapPoint in the map
         if (vbMap[i]) {
           cv::rectangle(im, pt1, pt2, color);
@@ -393,6 +407,9 @@ void FrameDrawer::Update(Tracking *pTracker) {
   mvCurrentKeys = pTracker->mCurrentFrame.mvKeys;
   // For introspectivec keypoint quality coloring
   mvCurrentKeysQualScore = pTracker->mCurrentFrame.mvKeyQualScore;
+  mvCurrentKeysQualScoreTrain = pTracker->mCurrentFrame.mvKeyQualScoreTrain;
+  mbIntrospectionOn = pTracker->IntrospectionOn();
+  mbGenerateTrainingDataOn = pTracker->GenerateTrainingDataOn();
   if (both) {
     mvCurrentKeysRight = pTracker->mCurrentFrame.mvKeysRight;
     pTracker->mImRight.copyTo(mImRight);

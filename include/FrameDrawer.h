@@ -58,6 +58,7 @@ class FrameDrawer {
   vector<cv::KeyPoint> mvCurrentKeys, mvCurrentKeysRight;
   // Vector of keypoint quality score
   std::vector<float> mvCurrentKeysQualScore;
+  std::vector<float> mvCurrentKeysQualScoreTrain;
   vector<bool> mvbMap, mvbVO;
   bool mbOnlyTracking;
   int mnTracked, mnTrackedVO;
@@ -79,6 +80,10 @@ class FrameDrawer {
 
   map<long unsigned int, cv::Point2f> mmProjectPoints;
   map<long unsigned int, cv::Point2f> mmMatchedInImage;
+
+  // With regards IV-SLAM
+  bool mbIntrospectionOn = false;
+  bool mbGenerateTrainingDataOn = false;
 };
 
 }  // namespace ORB_SLAM3

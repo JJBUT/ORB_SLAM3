@@ -121,7 +121,8 @@ class System {
                       const vector<IMU::Point> &vImuMeas = vector<IMU::Point>(),
                       string filename = "",
                       const cv::Mat &costmap = cv::Mat(),
-                      const cv::Mat &groundtruth_pose = cv::Mat());
+                      const cv::Mat &groundtruth_pose = cv::Mat(),
+                      const string image_name = "");
 
   // With introspection
   cv::Mat TrackStereoIntrospection(const cv::Mat &imLeft,
@@ -132,7 +133,8 @@ class System {
   cv::Mat TrackStereoTrainingDataGeneration(const cv::Mat &imLeft,
                                             const cv::Mat &imRight,
                                             const double &timestamp,
-                                            const cv::Mat &groundtruth_pose);
+                                            const cv::Mat &groundtruth_pose,
+                                            const string image_name);
 
   // Process the given rgbd frame. Depthmap must be registered to the RGB frame.
   // Input image: RGB (CV_8UC3) or grayscale (CV_8U). RGB is converted to

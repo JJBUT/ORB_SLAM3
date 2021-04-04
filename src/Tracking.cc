@@ -39,6 +39,7 @@
 #include "ORBmatcher.h"
 #include "Optimizer.h"
 #include "PnPsolver.h"
+#include "feature_evaluator.h"
 
 using namespace std;
 
@@ -848,7 +849,8 @@ cv::Mat Tracking::GrabImageStereo(const cv::Mat &imRectLeft,
                                   const double &timestamp,
                                   string filename,
                                   const cv::Mat &costmap,
-                                  const cv::Mat &groundtruth_pose) {
+                                  const cv::Mat &groundtruth_pose,
+                                  const string image_name) {
   mImGray = imRectLeft;
   cv::Mat imGrayRight = imRectRight;
   mImRight = imRectRight;
@@ -936,6 +938,7 @@ cv::Mat Tracking::GrabImageStereo(const cv::Mat &imRectLeft,
 
   if (mpSystem->GenerateTrainingDataOn() && !groundtruth_pose.empty()) {
     mCurrentFrame.SetGroundTruthPose(groundtruth_pose);
+    mCurrentFrame.SetImageName(image_name);
   }
 
   std::chrono::steady_clock::time_point t0 = std::chrono::steady_clock::now();
@@ -1764,12 +1767,18 @@ void Tracking::Track() {
       }
     }
 
-    // Update drawer
+    // Must be done before viewer update is called so we can visualize the
+    // keypoint quality score if we are training
+    if (mpSystem->GenerateTrainingDataOn()) {
+      mCurrentFrame.ComputeKeyPtQualScores();
+    }
+
+    // Update drawer of camera pose - not keyframes -_=
     mpFrameDrawer->Update(this);
     if (mpSystem->GenerateTrainingDataOn() && !mCurrentFrame.mTcw_gt.empty() &&
         !mCurrentFrame.mTcw.empty()) {
-      // Groundtruth available
-      mpMapDrawer->SetCurrentCameraPose(mCurrentFrame.mTcw);
+      mpMapDrawer->SetCurrentCameraPose(mCurrentFrame.mTcw,
+                                        mCurrentFrame.mTcw_gt);
     } else if (!mCurrentFrame.mTcw.empty()) {
       // No grountruth available
       mpMapDrawer->SetCurrentCameraPose(mCurrentFrame.mTcw);
@@ -1779,6 +1788,56 @@ void Tracking::Track() {
     if (!mCurrentFrame.mTcw.empty()) {
       mCurrentFramePose = CalculateInverseTransform(mCurrentFrame.mTcw);
     }
+
+    // Start training data generation magic - only do "unsupervised training" -
+    // i.e. use the groundtruth pose only to evaluate the VSLAM relative pose
+    // and not the feature quality
+    static int counter = 0;
+    counter++;
+    if (mpSystem->GenerateTrainingDataOn() && mState == OK && counter > 2) {
+      // Generate image quality heatmap from unsupervised quality
+      // estimations
+      cv::Mat img_curr = mImGray;
+      cv::Mat bad_region_heatmap;
+      cv::Mat bad_region_heatmap_mask;
+      feature_evaluation::GenerateUnsupImageQualityHeatmapGP(
+          mCurrentFrame,
+          img_curr,
+          &bad_region_heatmap,
+          &bad_region_heatmap_mask);
+
+      // Check is mask is usable for training - if mask is all zero then it is
+      // no good for training
+      bool mask_is_all_zero =
+          feature_evaluation::IsHeatmapMaskAllZero(bad_region_heatmap_mask);
+      // Check if the VSLAM relative pose transform is similar to the
+      // supervisory pose transform
+      bool const tracking_reliable = EvaluateTrackingAccuracy();
+
+      // We use a class enum for Reliability because who likes implicit integer
+      // conversion -__-
+      feature_evaluation::Reliability reliability =
+          (tracking_reliable && !mask_is_all_zero)
+              ? feature_evaluation::Reliability::Reliable
+              : feature_evaluation::Reliability::Unreliable;
+
+      // If reliable save heatmap and masl to disk
+      if (reliability == feature_evaluation::Reliability::Reliable) {
+        if (!mDatasetCreator) {
+          mDatasetCreator = new feature_evaluation::DatasetCreator(
+              "/home/administrator/Desktop");
+        }
+
+        // Save heatmap
+        mDatasetCreator->SaveBadRegionHeatmap(mCurrentFrame.msImageName,
+                                              bad_region_heatmap);
+        // Save mask
+        mDatasetCreator->SaveBadRegionHeatmapMask(mCurrentFrame.msImageName,
+                                                  bad_region_heatmap_mask);
+      }
+    }
+
+    // End training data generation magic
 
     if (bOK || mState == RECENTLY_LOST) {
       // Update motion model
@@ -1835,11 +1894,11 @@ void Tracking::Track() {
                                mSensor == System::IMU_STEREO))))
         CreateNewKeyFrame();
 
-      // We allow points with high innovation (considererd outliers by the Huber
-      // Function) pass to the new keyframe, so that bundle adjustment will
-      // finally decide if they are outliers or not. We don't want next frame to
-      // estimate its position with those points so we discard them in the
-      // frame. Only has effect if lastframe is tracked
+      // We allow points with high innovation (considererd outliers by the
+      // Huber Function) pass to the new keyframe, so that bundle adjustment
+      // will finally decide if they are outliers or not. We don't want next
+      // frame to estimate its position with those points so we discard them
+      // in the frame. Only has effect if lastframe is tracked
       for (int i = 0; i < mCurrentFrame.N; i++) {
         if (mCurrentFrame.mvpMapPoints[i] && mCurrentFrame.mvbOutlier[i])
           mCurrentFrame.mvpMapPoints[i] = static_cast<MapPoint *>(NULL);
@@ -2297,6 +2356,9 @@ bool Tracking::TrackReferenceKeyFrame() {
   // endl;
   Optimizer::PoseOptimization(&mCurrentFrame);
 
+  if (mpSystem->GenerateTrainingDataOn()) {
+    mCurrentFrame.BackupNewMapPoints();
+  }
   // Discard outliers
   int nmatchesMap = 0;
   for (int i = 0; i < mCurrentFrame.N; i++) {
@@ -2448,6 +2510,11 @@ bool Tracking::TrackWithMotionModel() {
   // Optimize frame pose with all matches
   Optimizer::PoseOptimization(&mCurrentFrame);
 
+  // With regards IV-SLAM
+  if (mpSystem->GenerateTrainingDataOn()) {
+    mCurrentFrame.BackupNewMapPoints();
+  }
+
   // Discard outliers
   int nmatchesMap = 0;
   for (int i = 0; i < mCurrentFrame.N; i++) {
@@ -2521,6 +2588,10 @@ bool Tracking::TrackLocalMap() {
                               // !mpLastKeyFrame->GetMap()->GetIniertialBA1());
       }
     }
+  }
+
+  if (mpSystem->GenerateTrainingDataOn()) {
+    mCurrentFrame.BackupNewMapPoints();
   }
 
   aux1 = 0, aux2 = 0;
@@ -3758,6 +3829,202 @@ cv::Mat Tracking::CalculateInverseTransform(const cv::Mat &transform) {
   t1_inv.copyTo(transform_inv.rowRange(0, 3).col(3));
 
   return transform_inv;
+}
+
+bool Tracking::IntrospectionOn() const { return mpSystem->IntrospectionOn(); }
+bool Tracking::GenerateTrainingDataOn() const {
+  return mpSystem->GenerateTrainingDataOn();
+}
+
+// With regards IV-SLAM - TODO simplify
+bool Tracking::EvaluateTrackingAccuracy() {
+  // If set to true, tracking accuracy is flagged as reliable only if current
+  // velocity is larger than some threshold. This is to prune out regions
+  // where the camera is standing still hence, feature tracking is easy.
+  const bool kAssertMinVelocity = true;
+
+  // If set to true, frame time stamps are used for calculating the velocity
+  // of the camera. Otherwise, del_T will be deduced from the provided FPS
+  // of the images.
+  const bool kUseTimeStamps = false;
+
+  const float kMinAngVel = M_PI * 10.0f / 180.0f;  // rad/s
+  const float kMinLinVel = 0.3;                    // m/s
+
+  const long int min_horizon = 20;
+  const long int max_horizon = 35;
+
+  const double chi2_thresh = 12.59159;  // 95% percentile for chi2 of degree 6
+
+  long unsigned int curr_id = mCurrentFrame.mnId;
+  KeyFrame *ref_kf;
+
+  bool ref_found = false;
+  for (long int k = min_horizon; k < max_horizon; k++) {
+    long unsigned int ref_id = static_cast<long unsigned int>(
+        std::max(0l, static_cast<long int>(curr_id) - k));
+    if (ref_id == 0) {
+      return false;
+    }
+
+    if (ref_found) {
+      break;
+    }
+
+    for (size_t i = 0; i < mvpLocalKeyFrames.size(); i++) {
+      if (mvpLocalKeyFrames[i]->mnFrameId == ref_id) {
+        ref_kf = mvpLocalKeyFrames[i];
+        ref_found = true;
+        break;
+      }
+    }
+  }
+
+  if (!ref_found) {
+    LOG(INFO) << "No keyframe found with mnFrameId in the range "
+              << static_cast<long int>(curr_id) - max_horizon << ", "
+              << static_cast<long int>(curr_id) - min_horizon;
+    return false;
+  }
+
+  //   cout << "curr_frame/found_ref:  " << curr_id << " / " <<
+  //   ref_kf->mnFrameId
+  //        << endl;
+
+  cv::Mat pose_gt_0 = ref_kf->GetGroundTruthPose();
+  cv::Mat pose_gt_1 = mCurrentFrame.mTwc_gt;
+
+  cv::Mat pose_est_0 = ref_kf->GetPoseInverse();
+  cv::Mat pose_est_1 = CalculateInverseTransform(mCurrentFrame.mTcw);
+
+  Eigen::AngleAxisd aa_rot_err;
+  Eigen::Vector3d t_err;
+  CalcRelativePoseError(
+      pose_est_0, pose_est_1, pose_gt_0, pose_gt_1, &aa_rot_err, &t_err);
+  //   cout << "t_err: " << t_err.transpose() << endl;
+  //   cout << "aa_rot_err" << aa_rot_err.axis().transpose() << ": "
+  //        << aa_rot_err.angle() << endl;
+
+  Eigen::Matrix<double, 6, 1> pose_err;
+  pose_err.topRows(3) = aa_rot_err.axis() * aa_rot_err.angle();
+  pose_err.bottomRows(3) = t_err;
+
+  Eigen::Matrix<double, 6, 6> cam_pose_cov_inv;
+  cam_pose_cov_inv << 20, 0, 0, 0, 0, 0, 0, 20, 0, 0, 0, 0, 0, 0, 20, 0, 0, 0,
+      0, 0, 0, 20, 0, 0, 0, 0, 0, 0, 20, 0, 0, 0, 0, 0, 0, 20;
+
+  double chi2 = pose_err.transpose() * cam_pose_cov_inv * pose_err;
+
+  //   cout << "chi2: " << chi2 << " / " << chi2_thresh << ". ";
+
+  // Calculate cameras velocity w.r.t the last keyframe
+  bool min_vel_acheived = true;
+  if (kAssertMinVelocity) {
+    cv::Mat pose_gt_lastKF = mpLastKeyFrame->GetGroundTruthPose();
+    cv::Mat rel_tf = CalculateRelativeTransform(pose_gt_lastKF, pose_gt_1);
+    float del_t;
+    if (kUseTimeStamps) {
+      del_t = static_cast<float>(mCurrentFrame.mTimeStamp -
+                                 mpLastKeyFrame->mTimeStamp);
+    } else {
+      del_t =
+          (1.0 / mMaxFrames) * (mCurrentFrame.mnId - mpLastKeyFrame->mnFrameId);
+    }
+
+    Eigen::Map<Eigen::Matrix<float, 4, 4, Eigen::RowMajor>> T_rel(
+        rel_tf.ptr<float>(), rel_tf.rows, rel_tf.cols);
+    Eigen::Vector3f t_rel = T_rel.topRightCorner(3, 1);
+    Eigen::Matrix3f R_rel = T_rel.topLeftCorner(3, 3);
+    Eigen::AngleAxisf aa_rel(R_rel);
+
+    float lin_vel_abs = (t_rel / del_t).norm();
+    float ang_vel_abs = aa_rel.angle() / del_t;
+
+    //     cout << "lin_vel_abs: " << lin_vel_abs << endl;
+    //     cout << "ang_vel_abs: " << ang_vel_abs << endl;
+
+    if (lin_vel_abs < kMinLinVel && ang_vel_abs < kMinAngVel) {
+      min_vel_acheived = false;
+      //       cout << "Velocity does not reach the minimum for training data
+      //       gen"
+      //            << endl;
+      return false;
+    }
+  }
+
+  if (chi2 > chi2_thresh) {
+    //     cout << "Unreliable!!!!" << endl;
+    return false;
+  } else {
+    //     cout << "Reliable." << endl;
+    return true;
+  }
+}
+
+void Tracking::CalcRelativePoseError(cv::Mat &pose_est_0,
+                                     cv::Mat &pose_est_1,
+                                     cv::Mat &pose_gt_0,
+                                     cv::Mat &pose_gt_1,
+                                     Eigen::AngleAxisd *aa_rot_err,
+                                     Eigen::Vector3d *t_err) {
+  // Map to Eigen Matrices
+  Eigen::Map<Eigen::Matrix<float, 4, 4, Eigen::RowMajor>> T_est0(
+      pose_est_0.ptr<float>(), pose_est_0.rows, pose_est_0.cols);
+  Eigen::Map<Eigen::Matrix<float, 4, 4, Eigen::RowMajor>> T_est1(
+      pose_est_1.ptr<float>(), pose_est_1.rows, pose_est_1.cols);
+  Eigen::Map<Eigen::Matrix<float, 4, 4, Eigen::RowMajor>> T_gt0(
+      pose_gt_0.ptr<float>(), pose_gt_0.rows, pose_gt_0.cols);
+  Eigen::Map<Eigen::Matrix<float, 4, 4, Eigen::RowMajor>> T_gt1(
+      pose_gt_1.ptr<float>(), pose_gt_1.rows, pose_gt_1.cols);
+
+  // The estimated pose of the camera at the end of prediction horizon
+  Eigen::Vector3f t_est_H = T_est1.topRightCorner(3, 1);
+  Eigen::Matrix3f R_est_H = T_est1.topLeftCorner(3, 3);
+
+  Eigen::Vector3f t_est_curr = T_est0.topRightCorner(3, 1);
+  Eigen::Matrix3f R_est_curr = T_est0.topLeftCorner(3, 3);
+
+  Eigen::Vector3f t_H = T_gt1.topRightCorner(3, 1);
+  Eigen::Matrix3f R_H = T_gt1.topLeftCorner(3, 3);
+
+  Eigen::Vector3f t_curr = T_gt0.topRightCorner(3, 1);
+  Eigen::Matrix3f R_curr = T_gt0.topLeftCorner(3, 3);
+
+  // The reference tranformation from frame H to current frame
+  Eigen::Vector3f t_ref_curr_H;
+  Eigen::Matrix3f R_ref_curr_H;
+
+  R_ref_curr_H = R_curr.transpose() * R_H;
+  t_ref_curr_H = R_curr.transpose() * t_H - R_curr.transpose() * t_curr;
+
+  Eigen::Vector3f t_inv_ref_curr_H = -R_ref_curr_H.transpose() * t_ref_curr_H;
+  Eigen::Matrix3f R_inv_ref_curr_H = R_ref_curr_H.transpose();
+
+  // The estimated tranformation from frame H to current frame
+  Eigen::Vector3f t_est_curr_H;
+  Eigen::Matrix3f R_est_curr_H;
+
+  R_est_curr_H = R_est_curr.transpose() * R_est_H;
+  t_est_curr_H =
+      R_est_curr.transpose() * t_est_H - R_est_curr.transpose() * t_est_curr;
+
+  *aa_rot_err = (R_inv_ref_curr_H * R_est_curr_H).cast<double>();
+  *t_err = (t_inv_ref_curr_H + R_inv_ref_curr_H * t_est_curr_H).cast<double>();
+}
+
+cv::Mat Tracking::CalculateRelativeTransform(const cv::Mat &dest_frame_pose,
+                                             const cv::Mat &src_frame_pose) {
+  return CalculateInverseTransform(dest_frame_pose) * src_frame_pose;
+}
+
+void Tracking::SaveHeatmapImageNames() {
+  if (mDatasetCreator) {
+    mDatasetCreator->SaveToFile();
+  } else {
+    LOG(FATAL)
+        << "Asked to save heatmap image names but couldn't :( - you probably "
+           "ended the program before any training data was needed to be saved";
+  }
 }
 
 }  // namespace ORB_SLAM3

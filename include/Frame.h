@@ -118,6 +118,9 @@ class Frame {
                                  const int x1,
                                  const cv::Mat &costmap);
 
+  // With regards IV-SLAM
+  void ComputeKeyPtQualScores();
+
   // Compute Bag of Words representation.
   void ComputeBoW();
 
@@ -126,6 +129,8 @@ class Frame {
   void GetPose(cv::Mat &Tcw);
 
   void SetGroundTruthPose(cv::Mat Twc_gt);
+  void GetGroundTruthPose();
+  void SetImageName(const string image_name);
 
   // Set IMU velocity
   void SetVelocity(const cv::Mat &Vwb);
@@ -190,6 +195,9 @@ class Frame {
   cv::Mat mRwc;
   cv::Mat mOw;
 
+  // With regards IV-SLAM
+  void BackupNewMapPoints();
+
  public:
   // Vocabulary used for relocalization.
   ORBVocabulary *mpORBvocabulary;
@@ -229,8 +237,23 @@ class Frame {
   std::vector<cv::KeyPoint> mvKeys, mvKeysRight;
   std::vector<cv::KeyPoint> mvKeysUn;
 
-  // Vector of keypoint quality score. These are used to perform weighted BA
+  // Vector of keypoint quality score. These are used to perform weighted BA -
+  // calculated from the model during introspection
   std::vector<float> mvKeyQualScore;
+
+  // Vector of keypoint quality scores that are calculated online in
+  // unsupervised training mode. These values are not used to perform weighted
+  // BA and are only used for generating training heatmaps and for
+  // visualization purposes in the frame drawer.
+  std::vector<float> mvKeyQualScoreTrain;
+
+  // With regards IV-SLAM
+  // The comprehensive vector of mapPoints associated to keypoints. The
+  // difference with mvpMapPoints is that this list keeps map points that
+  // have been ruled out as outliers as well. It is used for post processing
+  // and evalaution of the mappoints.
+  // NULL pointer if no association.
+  std::vector<MapPoint *> mvpMapPointsComp;
 
   // Corresponding stereo coordinate and depth for each keypoint.
   std::vector<MapPoint *> mvpMapPoints;
@@ -268,6 +291,10 @@ class Frame {
   // The same as above, but takes points from the world reference frame to
   // the camera reference frame
   cv::Mat mTcw_gt;
+
+  // Named used to track output heatmaps and masks - only used when generating
+  // training data
+  std::string msImageName;
 
   // IMU linear velocity
   cv::Mat mVw;
@@ -322,6 +349,16 @@ class Frame {
 
   double mTimeStereoMatch;
   double mTimeORB_Ext;
+
+  // With regards IV-SLAM
+  // Vector of the squared l2 norm of the normalized reprojection error for
+  // each of the keypoints
+  std::vector<float> mvChi2;
+
+  // Vector of the number of degrees of freedom for the chi2 distribution
+  // of the squared l2 norm of the normalized reprojection error for
+  // each of the keypoints
+  std::vector<int> mvChi2Dof;
 
  private:
   // Undistort keypoints given OpenCV distortion parameters.
