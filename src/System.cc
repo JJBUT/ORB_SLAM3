@@ -310,7 +310,8 @@ cv::Mat System::TrackStereo(const cv::Mat &imLeft,
                             const vector<IMU::Point> &vImuMeas,
                             string filename,
                             const cv::Mat &costmap,
-                            const cv::Mat &groundtruth_pose) {
+                            const cv::Mat &groundtruth_pose,
+                            const string image_name) {
   if (mSensor != STEREO && mSensor != IMU_STEREO) {
     cerr << "ERROR: you called TrackStereo but input sensor was not set to "
             "Stereo nor Stereo-Inertial."
@@ -358,8 +359,13 @@ cv::Mat System::TrackStereo(const cv::Mat &imLeft,
       mpTracker->GrabImuData(vImuMeas[i_imu]);
 
   // With IV-SLAM
-  cv::Mat Tcw = mpTracker->GrabImageStereo(
-      imLeft, imRight, timestamp, filename, costmap, groundtruth_pose);
+  cv::Mat Tcw = mpTracker->GrabImageStereo(imLeft,
+                                           imRight,
+                                           timestamp,
+                                           filename,
+                                           costmap,
+                                           groundtruth_pose,
+                                           image_name);
 
   unique_lock<mutex> lock2(mMutexState);
   mTrackingState = mpTracker->mState;
@@ -383,14 +389,16 @@ cv::Mat System::TrackStereoTrainingDataGeneration(
     const cv::Mat &imLeft,
     const cv::Mat &imRight,
     const double &timestamp,
-    const cv::Mat &groundtruth_pose) {
+    const cv::Mat &groundtruth_pose,
+    const string image_name) {
   return TrackStereo(imLeft,
                      imRight,
                      timestamp,
                      vector<IMU::Point>(),
                      "",
                      cv::Mat(),
-                     groundtruth_pose);
+                     groundtruth_pose,
+                     image_name);
 }
 
 cv::Mat System::TrackRGBD(const cv::Mat &im,

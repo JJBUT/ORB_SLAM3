@@ -653,6 +653,8 @@ void Frame::SetGroundTruthPose(cv::Mat Twc_gt) {
   tcw_gt.copyTo(mTcw_gt.rowRange(0, 3).col(3));
 }
 
+void Frame::SetImageName(const string image_name) { msImageName = image_name; }
+
 void Frame::SetNewBias(const IMU::Bias &b) {
   mImuBias = b;
   if (mpImuPreintegrated) mpImuPreintegrated->SetNewBias(b);

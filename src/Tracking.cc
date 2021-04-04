@@ -849,7 +849,8 @@ cv::Mat Tracking::GrabImageStereo(const cv::Mat &imRectLeft,
                                   const double &timestamp,
                                   string filename,
                                   const cv::Mat &costmap,
-                                  const cv::Mat &groundtruth_pose) {
+                                  const cv::Mat &groundtruth_pose,
+                                  const string image_name) {
   mImGray = imRectLeft;
   cv::Mat imGrayRight = imRectRight;
   mImRight = imRectRight;
@@ -937,6 +938,7 @@ cv::Mat Tracking::GrabImageStereo(const cv::Mat &imRectLeft,
 
   if (mpSystem->GenerateTrainingDataOn() && !groundtruth_pose.empty()) {
     mCurrentFrame.SetGroundTruthPose(groundtruth_pose);
+    mCurrentFrame.SetImageName(image_name);
   }
 
   std::chrono::steady_clock::time_point t0 = std::chrono::steady_clock::now();
@@ -1827,10 +1829,10 @@ void Tracking::Track() {
         }
 
         // Save heatmap
-        mDatasetCreator->SaveBadRegionHeatmap("hahahha.png",
+        mDatasetCreator->SaveBadRegionHeatmap(mCurrentFrame.msImageName,
                                               bad_region_heatmap);
         // Save mask
-        mDatasetCreator->SaveBadRegionHeatmapMask("hahahha_mask.png",
+        mDatasetCreator->SaveBadRegionHeatmapMask(mCurrentFrame.msImageName,
                                                   bad_region_heatmap_mask);
       }
     }

@@ -130,6 +130,7 @@ class Frame {
 
   void SetGroundTruthPose(cv::Mat Twc_gt);
   void GetGroundTruthPose();
+  void SetImageName(const string image_name);
 
   // Set IMU velocity
   void SetVelocity(const cv::Mat &Vwb);
@@ -290,6 +291,10 @@ class Frame {
   // The same as above, but takes points from the world reference frame to
   // the camera reference frame
   cv::Mat mTcw_gt;
+
+  // Named used to track output heatmaps and masks - only used when generating
+  // training data
+  std::string msImageName;
 
   // IMU linear velocity
   cv::Mat mVw;

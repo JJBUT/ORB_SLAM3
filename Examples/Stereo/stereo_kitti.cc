@@ -70,6 +70,12 @@ DEFINE_bool(undistort_rectify_on,
             "the parameters to zero then it will not perfrom that respective "
             "correction (i.e. undistort or rectify)");
 
+// Length of the image name suffix that should be extracted from its name -
+// relevant for passsing the image name for heatmap and masks - for example if
+// the images loaded from file have a name like "0000006.png" the image name
+// suffix length is equal to 10
+const int ImageNameSuffixLength = 10;
+
 using namespace std;
 
 void LoadImages(const string &strPathToSequence,
@@ -273,8 +279,12 @@ int main(int argc, char **argv) {
       SLAM_ptr->TrackStereoIntrospection(
           imLeft, imRight, tframe, cost_image_cv);
     } else if (SLAM_ptr->GenerateTrainingDataOn()) {
+      // Name for output heatmap and mask
+      string img_name = vstrImageLeft[ni].substr(
+          vstrImageLeft[ni].length() - ImageNameSuffixLength,
+          ImageNameSuffixLength);
       SLAM_ptr->TrackStereoTrainingDataGeneration(
-          imLeft, imRight, tframe, vGroundTruthPoses[ni]);
+          imLeft, imRight, tframe, vGroundTruthPoses[ni], img_name);
     } else {
       SLAM_ptr->TrackStereo(imLeft, imRight, tframe);
     }
