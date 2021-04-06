@@ -196,6 +196,13 @@ int main(int argc, char** argv) {
     ros::shutdown();
     return -1;
   }
+
+  bool viewer_on;
+  if (!private_nh.getParam("viewer_on", viewer_on)) {
+    ROS_ERROR("Could not load parameter: 'viewer_on'");
+    ros::shutdown();
+    return -1;
+  }
   // If approximate sync if on then an approximate time filter is used which is
   // useful when the image pairs dont have the exact same time stamp
   bool approximate_sync_on;
@@ -213,8 +220,11 @@ int main(int argc, char** argv) {
 
   // Create SLAM system. It initializes all system threads and gets ready to
   // process frames.
-  ORB_SLAM3::System SLAM(
-      path_to_vocabulary, path_to_settings, ORB_SLAM3::System::STEREO, true);
+  ORB_SLAM3::System SLAM(path_to_vocabulary,
+                         path_to_settings,
+                         ORB_SLAM3::System::STEREO,
+                         viewer_on,
+                         introspection_on);
 
   ResetServer rs(private_nh, &SLAM);
 
@@ -304,9 +314,9 @@ int main(int argc, char** argv) {
   image_transport::ImageTransport it(nh);
   image_transport::TransportHints hints(image_transport_type);
   image_transport::SubscriberFilter left_sub(
-      it, "/stereo/left/image_raw", 1, hints);
+      it, ros::names::remap("/stereo/left/image_raw"), 1, hints);
   image_transport::SubscriberFilter right_sub(
-      it, "/stereo/right/image_raw", 1, hints);
+      it, ros::names::remap("/stereo/right/image_raw"), 1, hints);
 
   ExactSync exact_sync(ExactPolicy(10), left_sub, right_sub);
   ApproximateSync approximate_sync(ApproximatePolicy(10), left_sub, right_sub);
@@ -398,11 +408,8 @@ void ImageGrabber::GrabStereo(const sensor_msgs::ImageConstPtr& msgLeft,
 
   // Pass the images to the SLAM system
   if (this->introspection_on) {
-    mpSLAM->TrackStereo(imLeft,
-                        imRight,
-                        cv_ptrLeft->header.stamp.toSec(),
-                        this->introspection_on,
-                        cost_img_cv);
+    mpSLAM->TrackStereoIntrospection(
+        imLeft, imRight, cv_ptrLeft->header.stamp.toSec(), cost_img_cv);
   } else {
     mpSLAM->TrackStereo(imLeft, imRight, cv_ptrLeft->header.stamp.toSec());
   }
