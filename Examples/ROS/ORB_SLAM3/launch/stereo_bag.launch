@@ -5,5 +5,11 @@
           output="screen" 
           args="-r 1.0 /home/administrator/DATA/BAGS/00015_2021-03-09-10-34-07.bag"/>
 
-     <include file="$(find ORB_SLAM3)/launch/stereo.launch"/>
+     <arg name="stereo_left_topic" default="/stereo/left/image_raw"/>
+     <arg name="stereo_right_topic" default="/stereo/right/image_raw"/>
+
+     <include file="$(find ORB_SLAM3)/launch/stereo.launch">
+          <arg name="stereo_left_topic" default="$(arg stereo_left_topic)"/>
+          <arg name="stereo_right_topic" default="$(arg stereo_right_topic)"/>
+     </include>
 </launch>

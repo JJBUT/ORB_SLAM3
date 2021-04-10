@@ -50,6 +50,7 @@ ${PROJECT_SOURCE_DIR}/../../../
 ${PROJECT_SOURCE_DIR}/../../../include
 ${PROJECT_SOURCE_DIR}/../../../include/CameraModels
 ${Pangolin_INCLUDE_DIRS}
+${PROJECT_SOURCE_DIR}/../../../include/iv_slam_helpers
 )
 
 set(LIBS 
@@ -89,6 +90,17 @@ src/ros_stereo.cc ../../../src/iv_slam_helpers/torch_helpers.cpp
 set_property(TARGET Stereo PROPERTY CXX_STANDARD 14)
 
 target_link_libraries(Stereo
+${LIBS}
+"${TORCH_LIBRARIES}"
+)
+
+# Node for stereo camera
+rosbuild_add_executable(Stereo_Phoenix
+src/phoenix_stereo.cc ../../../src/iv_slam_helpers/torch_helpers.cpp
+)
+set_property(TARGET Stereo_Phoenix PROPERTY CXX_STANDARD 14)
+
+target_link_libraries(Stereo_Phoenix
 ${LIBS}
 "${TORCH_LIBRARIES}"
 )

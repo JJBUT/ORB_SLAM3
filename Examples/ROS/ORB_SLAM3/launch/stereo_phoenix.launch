@@ -19,8 +19,8 @@
 
 
      <node pkg="ORB_SLAM3" 
-           type="Stereo" 
-           name="ORB_SLAM_Stereo" 
+           type="Stereo_Phoenix" 
+           name="ORB_SLAM_Stereo_Phoenix" 
            output="screen">
 
           <param name="path_to_vocabulary" type="string" value="$(arg path_to_vocabulary)"/>
