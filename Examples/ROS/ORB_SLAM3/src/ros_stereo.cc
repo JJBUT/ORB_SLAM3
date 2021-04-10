@@ -109,26 +109,30 @@ typedef message_filters::Synchronizer<ApproximatePolicy> ApproximateSync;
 
 class ImageGrabber {
  public:
-  ImageGrabber(ros::NodeHandle& nh, ORB_SLAM3::System* pSLAM)
-      : nh_(nh), mpSLAM(pSLAM) {
+  ImageGrabber(ros::NodeHandle& nh,
+               std::string const& orb_slam_frame,
+               ORB_SLAM3::System* pSLAM)
+      : nh_(nh), orb_slam_frame_(orb_slam_frame), mpSLAM(pSLAM) {
     pose_pub_ = nh_.advertise<geometry_msgs::PoseStamped>("pose", 1);
   }
 
   void GrabStereo(const sensor_msgs::ImageConstPtr& msgLeft,
                   const sensor_msgs::ImageConstPtr& msgRight);
 
-  ORB_SLAM3::System* mpSLAM;
-  bool do_rectify;
-  bool introspection_on;
-  cv::Mat M1l, M2l, M1r, M2r;
-
   // ROS publishing utils
   ros::NodeHandle nh_;
   ros::Publisher pose_pub_;
+  std::string orb_slam_frame_;
 
   // Introspection utils
   torch::jit::script::Module introspection_model;
   torch::Device device = torch::kCPU;
+
+  // ORB SLAM
+  ORB_SLAM3::System* mpSLAM;
+  bool do_rectify;
+  bool introspection_on;
+  cv::Mat M1l, M2l, M1r, M2r;
 };
 
 // A server that advertises a service which will call the system reset function
@@ -218,6 +222,13 @@ int main(int argc, char** argv) {
     return -1;
   }
 
+  string orb_slam_frame;
+  if (!private_nh.getParam("orb_slam_frame", orb_slam_frame)) {
+    ROS_ERROR("Could not load parameter: 'orb_slam_frame'");
+    ros::shutdown();
+    return -1;
+  }
+
   // Create SLAM system. It initializes all system threads and gets ready to
   // process frames.
   ORB_SLAM3::System SLAM(path_to_vocabulary,
@@ -228,7 +239,7 @@ int main(int argc, char** argv) {
 
   ResetServer rs(private_nh, &SLAM);
 
-  ImageGrabber igb(private_nh, &SLAM);
+  ImageGrabber igb(private_nh, orb_slam_frame, &SLAM);
 
   igb.do_rectify = undistort_and_rectify_on;
   igb.introspection_on = introspection_on;
@@ -421,11 +432,12 @@ void ImageGrabber::GrabStereo(const sensor_msgs::ImageConstPtr& msgLeft,
     ros_pose_stamped.pose = cvMatToPose(cv_pose);
     ros_pose_stamped.header.stamp =
         cv_ptrLeft->header.stamp;  // TODO This time may be old by now?
-    ros_pose_stamped.header.frame_id = "orb_slam";
+    ros_pose_stamped.header.frame_id = orb_slam_frame_;
 
     pose_pub_.publish(ros_pose_stamped);
   } else {
-    ROS_WARN("Could not retrieve pose to publish :(");
+    ROS_WARN(
+        "Could not retrieve pose to publish :( - maybe not fully initialized");
   }
 
   return;

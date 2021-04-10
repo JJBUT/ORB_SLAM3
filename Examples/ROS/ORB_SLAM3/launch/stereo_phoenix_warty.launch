@@ -2,6 +2,7 @@
      <!--Base topic only - do not include transport type (i.e. compressed/theora/raw)-->
      <arg name="stereo_left_topic" default="/warty/stereo_left/image"/>
      <arg name="stereo_right_topic" default="/warty/stereo_right/image"/>
+     <arg name="orb_slam_frame" default="warty/stereo_left_optical_frame"/>
      
      <include file="$(find ORB_SLAM3)/launch/stereo_phoenix.launch">
           <arg name="path_to_settings" 
@@ -12,6 +13,7 @@
           <arg name="viewer_on" default="true"/>
           
           <arg name="image_transport_type" default="compressed"/>
+          <arg name="orb_slam_frame" default="$(arg orb_slam_frame)"/>
           <arg name="stereo_left_topic" default="$(arg stereo_left_topic)"/>
           <arg name="stereo_right_topic" default="$(arg stereo_right_topic)"/>
      </include>

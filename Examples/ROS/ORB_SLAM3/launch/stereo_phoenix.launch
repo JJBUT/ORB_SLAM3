@@ -16,6 +16,7 @@
      <arg name="image_transport_type" default="compressed" doc="'raw', 'compressed', 'theora' - image transport type of the subscribed image feeds"/>
      <arg name="stereo_left_topic" default="/stereo/left/image_raw"/>
      <arg name="stereo_right_topic" default="/stereo/right/image_raw"/>
+     <arg name="orb_slam_frame" default="orb_slam_frame"/>
 
 
      <node pkg="ORB_SLAM3" 
@@ -34,9 +35,11 @@
 
           <param name="approximate_sync_on" type="bool" value="$(arg approximate_sync_on)"/>
           <param name="image_transport_type" type="string" value="$(arg image_transport_type)"/>
+          <param name="orb_slam_frame" type="string" value="$(arg orb_slam_frame)"/>
 
           <remap from="/stereo/left/image_raw" to="$(arg stereo_left_topic)"/>
           <remap from="/stereo/right/image_raw" to="$(arg stereo_right_topic)"/>
+          
      </node>
 
 </launch>
