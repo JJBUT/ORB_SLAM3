@@ -91,7 +91,8 @@ RIGHT.R:  !!opencv-matrix
 # ORB Parameters
 #--------------------------------------------------------------------------------------------
 
-# ORB Extractor: Number of features per image
+# ORB Extractor: Number of features per image - for SLAM this can be 
+#  2000 and for training data generation this should be 5000
 ORBextractor.nFeatures: 2000
 
 # ORB Extractor: Scale factor between levels in the scale pyramid 	

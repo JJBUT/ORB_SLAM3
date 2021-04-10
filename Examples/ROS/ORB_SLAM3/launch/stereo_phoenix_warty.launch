@@ -1,0 +1,18 @@
+<launch>
+     <!--Base topic only - do not include transport type (i.e. compressed/theora/raw)-->
+     <arg name="stereo_left_topic" default="/warty/stereo_left/image"/>
+     <arg name="stereo_right_topic" default="/warty/stereo_right/image"/>
+     
+     <include file="$(find ORB_SLAM3)/launch/stereo_phoenix.launch">
+          <arg name="path_to_settings" 
+               default="/home/administrator/SLAM/ORB_SLAM3/Examples/Stereo/ahg_turn_test.yaml"/>
+          <arg name="introspection_on" default="false"/>
+          <arg name="gpu_available" default="true"/>
+          <arg name="undistort_and_rectify_on" default="false"/>
+          <arg name="viewer_on" default="true"/>
+          
+          <arg name="image_transport_type" default="compressed"/>
+          <arg name="stereo_left_topic" default="$(arg stereo_left_topic)"/>
+          <arg name="stereo_right_topic" default="$(arg stereo_right_topic)"/>
+     </include>
+</launch>
