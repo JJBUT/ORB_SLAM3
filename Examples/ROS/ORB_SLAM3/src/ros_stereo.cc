@@ -69,25 +69,18 @@ geometry_msgs::Pose cvMatToPose(const cv::Matx44f& cv_pose) {
                           cv_pose(2, 2));
   cv::Matx31f cv_translation(cv_pose(0, 3), cv_pose(1, 3), cv_pose(2, 3));
 
-  cv::Matx33f coordinate_rotation(
-      0.0, 0.0, 1.0, -1.0, 0.0, 0.0, 0.0, -1.0, 0.0);
-
-  cv::Matx33f rotated_cv_rotation = cv_rotation;  // TODO the rotation has a bug
-  cv::Matx31f rotated_cv_translation = coordinate_rotation * cv_translation;
-
   // Convert to ROS types
-  tf2::Matrix3x3 tf2_rot(rotated_cv_rotation(0, 0),
-                         rotated_cv_rotation(0, 1),
-                         rotated_cv_rotation(0, 2),
-                         rotated_cv_rotation(1, 0),
-                         rotated_cv_rotation(1, 1),
-                         rotated_cv_rotation(1, 2),
-                         rotated_cv_rotation(2, 0),
-                         rotated_cv_rotation(2, 1),
-                         rotated_cv_rotation(2, 2));
-  tf2::Vector3 tf2_trans(rotated_cv_translation(0),
-                         rotated_cv_translation(1),
-                         rotated_cv_translation(2));
+  tf2::Matrix3x3 tf2_rot(cv_rotation(0, 0),
+                         cv_rotation(0, 1),
+                         cv_rotation(0, 2),
+                         cv_rotation(1, 0),
+                         cv_rotation(1, 1),
+                         cv_rotation(1, 2),
+                         cv_rotation(2, 0),
+                         cv_rotation(2, 1),
+                         cv_rotation(2, 2));
+  tf2::Vector3 tf2_trans(
+      cv_translation(0), cv_translation(1), cv_translation(2));
 
   // Create a tf2 pose/transform and convert to a Pose
   tf2::Transform tf2_pose(tf2_rot, tf2_trans);
@@ -428,8 +421,21 @@ void ImageGrabber::GrabStereo(const sensor_msgs::ImageConstPtr& msgLeft,
   // Publish the pose
   cv::Matx44f cv_pose;
   if (mpSLAM->GetCurrentCamPose(&cv_pose)) {
+    geometry_msgs::Pose temp_pose = cvMatToPose(cv_pose);
+    // Rotation magic to escape camera frame
+    tf2::Quaternion q_orig, q_rot, q_new;
+
+    tf2::convert(temp_pose.orientation, q_orig);
+    q_rot.setRPY(-1.57, 0.0, 0.0);
+
+    q_new = q_rot * q_orig;
+    q_new.normalize();
+
     geometry_msgs::PoseStamped ros_pose_stamped;
-    ros_pose_stamped.pose = cvMatToPose(cv_pose);
+    ros_pose_stamped.pose.position.x = temp_pose.position.z;
+    ros_pose_stamped.pose.position.y = -temp_pose.position.x;
+    ros_pose_stamped.pose.position.z = -temp_pose.position.y;
+    tf2::convert(q_new, ros_pose_stamped.pose.orientation);
     ros_pose_stamped.header.stamp =
         cv_ptrLeft->header.stamp;  // TODO This time may be old by now?
     ros_pose_stamped.header.frame_id = orb_slam_frame_;
