@@ -28,6 +28,7 @@
 #include <message_filters/sync_policies/approximate_time.h>
 #include <message_filters/sync_policies/exact_time.h>
 #include <message_filters/time_synchronizer.h>
+#include <omnimapper_msgs/RelativePoseQuery.h>  // Phoenix service message
 #include <ros/ros.h>
 #include <tf2_geometry_msgs/tf2_geometry_msgs.h>
 #include <torch/script.h>
@@ -55,6 +56,11 @@ enum eTrackingState {
   LOST = 4,
   OK_KLT = 5
 };
+
+cv::Mat CalculateInverseTransform(const cv::Mat& transform);
+
+cv::Mat CalculateRelativeTransform(const cv::Mat& dest_frame_pose,
+                                   const cv::Mat& src_frame_pose);
 
 // Convert CV SE(3) mat to ROS Pose
 geometry_msgs::Pose cvMatToPose(const cv::Matx44f& cv_pose) {
@@ -152,6 +158,25 @@ class ResetServer {
   ros::ServiceServer reset_vslam_server_;
 };
 
+// A server that advertises a service which will call the system reset function
+class OmnigraphInterface {
+ public:
+  OmnigraphInterface(ros::NodeHandle& nh, ORB_SLAM3::System* pSLAM)
+      : nh_(nh), mpSLAM_(pSLAM) {
+    omnigraph_interface_server_ = nh_.advertiseService(
+        "/warty/viwo_odom", &OmnigraphInterface::OmnigraphInterfaceCB, this);
+  }
+
+  bool OmnigraphInterfaceCB(omnimapper_msgs::RelativePoseQuery::Request& req,
+                            omnimapper_msgs::RelativePoseQuery::Response& res);
+
+  ros::NodeHandle nh_;
+  ORB_SLAM3::System* mpSLAM_;
+  ros::ServiceServer omnigraph_interface_server_;
+
+  cv::Matx44f last_pose = cv::Mat(cv::Mat::eye(4, 4, CV_32F));
+};
+
 int main(int argc, char** argv) {
   ros::init(argc, argv, "Stereo");
   ros::start();
@@ -238,6 +263,7 @@ int main(int argc, char** argv) {
                          introspection_on);
 
   ResetServer rs(private_nh, &SLAM);
+  OmnigraphInterface oi(private_nh, &SLAM);
 
   ImageGrabber igb(private_nh, orb_slam_frame, &SLAM);
 
@@ -428,10 +454,21 @@ void ImageGrabber::GrabStereo(const sensor_msgs::ImageConstPtr& msgLeft,
   // Publish the pose
   cv::Matx44f cv_pose;
   if (mpSLAM->GetCurrentCamPose(&cv_pose)) {
+    geometry_msgs::Pose temp_pose = cvMatToPose(cv_pose);
+
     geometry_msgs::PoseStamped ros_pose_stamped;
-    ros_pose_stamped.pose = cvMatToPose(cv_pose);
-    ros_pose_stamped.header.stamp =
-        cv_ptrLeft->header.stamp;  // TODO This time may be old by now?
+    // Translation and rotation magic to escape camera frame
+    ros_pose_stamped.pose.position.x = temp_pose.position.z;
+    ros_pose_stamped.pose.position.y = -temp_pose.position.x;
+    ros_pose_stamped.pose.position.z = -temp_pose.position.y;
+    ros_pose_stamped.pose.orientation.x = temp_pose.orientation.x;
+    ros_pose_stamped.pose.orientation.y = temp_pose.orientation.z;
+    ros_pose_stamped.pose.orientation.z = -temp_pose.orientation.y;
+    ros_pose_stamped.pose.orientation.w = temp_pose.orientation.w;
+
+    // ros_pose_stamped.header.stamp =
+    //    cv_ptrLeft->header.stamp;  // TODO This time may be old by now?
+    ros_pose_stamped.header.stamp = ros::Time::now();
     ros_pose_stamped.header.frame_id = orb_slam_frame_;
 
     pose_pub_.publish(ros_pose_stamped);
@@ -447,15 +484,107 @@ bool ResetServer::ResetServerCB(std_srvs::Trigger::Request& req,
                                 std_srvs::Trigger::Response& res) {
   if (mpSLAM_->GetTrackingState() == OK) {
     mpSLAM_->Reset();
-    res.success = true;
+    res.success = 1;
     res.message = "Called reset_vslam_server_";
     return true;
   } else {
     // Tracking is not ok - do not call reset becuase who knows what segfaults
     // we will cause :(
-    res.success = false;
+    res.success = 0;
     res.message =
         "Not able to call reset_vslam_server_ because tracking is not OK";
     return true;
   }
 }
+
+bool OmnigraphInterface::OmnigraphInterfaceCB(
+    omnimapper_msgs::RelativePoseQuery::Request& req,
+    omnimapper_msgs::RelativePoseQuery::Response& res) {
+  cv::Matx44f cv_pose;
+  if (mpSLAM_->GetCurrentCamPose(&cv_pose) &&
+      mpSLAM_->GetTrackingState() == OK) {
+    // Tracking is good and we got a pose - we can do what we need to do
+    // Get relative transform
+    cv::Matx44f cv_rel_pose =
+        CalculateRelativeTransform(cv::Mat(this->last_pose), cv::Mat(cv_pose));
+    // Update origin
+    last_pose = cv_pose;
+    geometry_msgs::Pose ros_rel_pose = cvMatToPose(cv_rel_pose);
+
+    res.solution = req.initial_guess;
+    res.solution.pose.position = ros_rel_pose.position;
+    res.solution.pose.orientation = ros_rel_pose.orientation;
+
+    // add covariance info
+    for (int r = 0; r < 6; r++) {
+      for (int c = 0; c < 6; c++) {
+        if (r == c) {
+          res.solution.covariance[6 * r + c] = 0.01;
+        }
+      }
+    }
+    res.success = 1;
+    ROS_WARN("Good visual odom");
+    return true;
+  } else {
+    // Tracking is not ok - we cannot do what we need to do
+    res.success = 0;
+    ROS_WARN("Failed visual odom");
+    return true;
+  }
+}
+
+cv::Mat CalculateInverseTransform(const cv::Mat& transform) {
+  if (transform.empty()) {
+    std::cout << "MATRIX IS EMPTY!! " << std::endl;
+  }
+
+  cv::Mat R1 = transform.rowRange(0, 3).colRange(0, 3);
+  cv::Mat t1 = transform.rowRange(0, 3).col(3);
+  cv::Mat R1_inv = R1.t();
+  cv::Mat t1_inv = -R1_inv * t1;
+  cv::Mat transform_inv = cv::Mat::eye(4, 4, transform.type());
+
+  R1_inv.copyTo(transform_inv.rowRange(0, 3).colRange(0, 3));
+  t1_inv.copyTo(transform_inv.rowRange(0, 3).col(3));
+
+  return transform_inv;
+}
+
+cv::Mat CalculateRelativeTransform(const cv::Mat& dest_frame_pose,
+                                   const cv::Mat& src_frame_pose) {
+  return CalculateInverseTransform(dest_frame_pose) * src_frame_pose;
+}
+
+/*
+bool service_callback() {
+  ROS_DEBUG_STREAM(fixed << "[VIWO] Service callback");
+  if (!have_base_calibration) {
+    if (get_imutobase_calibration())
+      have_base_calibration = true;
+    else {
+      ROS_DEBUG("[VIWO] Check base calibration failed");
+      return false;
+    }
+  }
+
+  // get current state
+  State* state = sys_->get_state();
+  if (!sys_->initialized()) return false;
+
+  graph_node_info prev_node, new_node;
+  set_graph_nodes(req, prev_node, new_node);
+
+  update_keyframes(state, prev_node, new_node);
+
+  resp.success = calculate_odometry(state, prev_node, new_node, resp.solution);
+
+  ROS_INFO_STREAM(
+      "VIWO REQ INIT GUESS FROM WHEEL ODOM: " << req.initial_guess.pose);
+  ROS_INFO_STREAM("VIWO RESP RETURNING : "
+                  << resp.solution.pose << " Success ? " << (int)resp.success);
+  ROS_INFO_STREAM(fixed << "[VIWO] CALLBACK SVC::prev_node: " << prev_node.time
+                        << " new node:" << new_node.time);
+  return true;
+}
+*/

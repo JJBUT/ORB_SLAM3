@@ -6,7 +6,7 @@
      
      <include file="$(find ORB_SLAM3)/launch/stereo_phoenix.launch">
           <arg name="path_to_settings" 
-               default="/home/administrator/SLAM/ORB_SLAM3/Examples/Stereo/ahg_turn_test.yaml"/>
+               default="/home/administrator/SLAM/ORB_SLAM3/Examples/Stereo/phoenix_warthog.yaml"/>
           <arg name="introspection_on" default="false"/>
           <arg name="gpu_available" default="true"/>
           <arg name="undistort_and_rectify_on" default="false"/>

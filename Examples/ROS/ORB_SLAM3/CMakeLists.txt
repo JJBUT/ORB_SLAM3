@@ -43,6 +43,8 @@ find_package(Eigen3 3.1.0 REQUIRED)
 find_package(Pangolin REQUIRED)
 find_package(Torch REQUIRED)
 find_package(image_transport REQUIRED)
+find_package(omnimapper_msgs REQUIRED) # Phoenix msgs TODO remove
+
 
 include_directories(
 ${PROJECT_SOURCE_DIR}
@@ -51,6 +53,7 @@ ${PROJECT_SOURCE_DIR}/../../../include
 ${PROJECT_SOURCE_DIR}/../../../include/CameraModels
 ${Pangolin_INCLUDE_DIRS}
 ${PROJECT_SOURCE_DIR}/../../../include/iv_slam_helpers
+${omnimapper_msgs_INCLUDE_DIRS} # Phoenix msgs TODO remove
 )
 
 set(LIBS 

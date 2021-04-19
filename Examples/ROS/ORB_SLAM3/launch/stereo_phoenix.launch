@@ -3,7 +3,7 @@
      <arg name="path_to_vocabulary" 
           default="/home/administrator/SLAM/ORB_SLAM3/Vocabulary/ORBvoc.txt"/>
      <arg name="path_to_settings" 
-          default="/home/administrator/SLAM/ORB_SLAM3/Examples/Stereo/ahg_turn_test.yaml"/>
+          default="/home/administrator/SLAM/ORB_SLAM3/Examples/Stereo/phoenix_warthog.yaml"/>
      <arg name="path_to_introspection_model" 
           default="/home/administrator/DATA/MODEL/speedway_24th_cross/exported_model/iv_speedway_24th_cross_mobilenet_c1deepsup_light.pt"/>
      <!--ORB-SLAM centric-->
@@ -22,7 +22,8 @@
      <node pkg="ORB_SLAM3" 
            type="Stereo_Phoenix" 
            name="ORB_SLAM_Stereo_Phoenix" 
-           output="screen">
+           output="screen"
+           ns="warty">
 
           <param name="path_to_vocabulary" type="string" value="$(arg path_to_vocabulary)"/>
           <param name="path_to_settings" type="string" value="$(arg path_to_settings)"/>
