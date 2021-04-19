@@ -3365,6 +3365,7 @@ void Tracking::Reset(bool bLocMap) {
   mpReferenceKF = static_cast<KeyFrame *>(NULL);
   mpLastKeyFrame = static_cast<KeyFrame *>(NULL);
   mvIniMatches.clear();
+  mCurrentFramePose = cv::Mat();  // With regards IV-SLAM ROS
 
   if (mpViewer) mpViewer->Release();
 

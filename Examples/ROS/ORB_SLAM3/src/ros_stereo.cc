@@ -417,27 +417,24 @@ void ImageGrabber::GrabStereo(const sensor_msgs::ImageConstPtr& msgLeft,
   } else {
     mpSLAM->TrackStereo(imLeft, imRight, cv_ptrLeft->header.stamp.toSec());
   }
-
   // Publish the pose
   cv::Matx44f cv_pose;
-  if (mpSLAM->GetCurrentCamPose(&cv_pose)) {
+  if (mpSLAM->GetCurrentCamPose(&cv_pose) && mpSLAM->GetTrackingState() == OK) {
     geometry_msgs::Pose temp_pose = cvMatToPose(cv_pose);
-    // Rotation magic to escape camera frame
-    tf2::Quaternion q_orig, q_rot, q_new;
-
-    tf2::convert(temp_pose.orientation, q_orig);
-    q_rot.setRPY(-1.57, 0.0, 0.0);
-
-    q_new = q_rot * q_orig;
-    q_new.normalize();
 
     geometry_msgs::PoseStamped ros_pose_stamped;
+    // Translation and rotation magic to escape camera frame
     ros_pose_stamped.pose.position.x = temp_pose.position.z;
     ros_pose_stamped.pose.position.y = -temp_pose.position.x;
     ros_pose_stamped.pose.position.z = -temp_pose.position.y;
-    tf2::convert(q_new, ros_pose_stamped.pose.orientation);
-    ros_pose_stamped.header.stamp =
-        cv_ptrLeft->header.stamp;  // TODO This time may be old by now?
+    ros_pose_stamped.pose.orientation.x = temp_pose.orientation.x;
+    ros_pose_stamped.pose.orientation.y = temp_pose.orientation.z;
+    ros_pose_stamped.pose.orientation.z = -temp_pose.orientation.y;
+    ros_pose_stamped.pose.orientation.w = temp_pose.orientation.w;
+
+    // ros_pose_stamped.header.stamp =
+    //    cv_ptrLeft->header.stamp;  // TODO This time may be old by now?
+    ros_pose_stamped.header.stamp = ros::Time::now();
     ros_pose_stamped.header.frame_id = orb_slam_frame_;
 
     pose_pub_.publish(ros_pose_stamped);
@@ -453,13 +450,15 @@ bool ResetServer::ResetServerCB(std_srvs::Trigger::Request& req,
                                 std_srvs::Trigger::Response& res) {
   if (mpSLAM_->GetTrackingState() == OK) {
     mpSLAM_->Reset();
-    res.success = true;
+    mpSLAM_->SetCurrentCamPoseBlank();
+    res.success = 1;
     res.message = "Called reset_vslam_server_";
     return true;
   } else {
-    // Tracking is not ok - do not call reset becuase who knows what segfaults
+    ROS_ERROR_STREAM("Unbable to resset IV-SLAM3");
+    // Tracking is not ok - do not call reset because who knows what segfaults
     // we will cause :(
-    res.success = false;
+    res.success = 0;
     res.message =
         "Not able to call reset_vslam_server_ because tracking is not OK";
     return true;

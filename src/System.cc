@@ -1017,12 +1017,19 @@ bool System::GetCurrentCamPose(cv::Matx44f *cam_pose_ptr) {
 
   cv::Matx44f &cam_pose = *cam_pose_ptr;
 
-  if (mTrackingState != OK || mpTracker->mCurrentFramePose.empty()) {
+  if (mpTracker->mCurrentFramePose.empty()) {
     return false;
   } else {
     cam_pose = mpTracker->mCurrentFramePose;
     return true;
   }
+}
+
+void System::SetCurrentCamPoseBlank() {
+  unique_lock<mutex> lock(mMutexState);
+
+  mpTracker->mCurrentFramePose = cv::Mat();
+  return;
 }
 
 /*void System::SaveAtlas(int type){

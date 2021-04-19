@@ -215,6 +215,8 @@ class System {
 
   bool GetCurrentCamPose(cv::Matx44f *cam_pose_ptr);
 
+  void SetCurrentCamPoseBlank();
+
   void ChangeDataset();
 
   // void SaveAtlas(int type);
